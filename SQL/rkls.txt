@@ -1,0 +1,93 @@
+base table component.
+
+exec sql select  areasymbol, lmapunitiid, musym, coiid, slope_r, slopelenusle_r, tfact
+   
+FROM  component 
+INNER JOIN datamapunit ON datamapunit.dmuiid=component.dmuiidref
+# AND majcompflag=1
+INNER JOIN correlation ON correlation.dmuiidref=datamapunit.dmuiid AND repdmu=1
+INNER JOIN mapunit ON mapunit.muiid=correlation.muiidref
+INNER JOIN lmapunit ON lmapunit.muiidref=mapunit.muiid
+INNER JOIN legend ON legend.liid=lmapunit.liidref
+INNER JOIN area ON area.areaiid=legend.areaiidref
+INNER JOIN area_type ON area_type.areatypeiid=area.areatypeiidref
+;
+SORT by areasymbol, lmapunitiid, coiid, musym 
+aggregate column areasymbol unique.
+
+derive k_factor from rv using "NSSC Pangaea":"EROSION FACTOR THICKEST LAYER IN DEPTH 0-15CM".
+derive r_factor from rv using "NSSC Pangaea":"R FACTOR RAW". 
+
+# The following slope length calculation is from Lightle and Weesies.
+DEFINE slopelen		IF slope_r >= 0 and slope_r < 0.75 THEN 100
+                    ELSE IF slope_r >= 0.75 and slope_r < 1.5 THEN 200
+                    ELSE IF slope_r >= 1.5 and slope_r < 2.5 THEN 300
+                    ELSE IF slope_r >= 2.5 and slope_r < 3.5 THEN 200
+                    ELSE IF slope_r >= 3.5 and slope_r < 4.5 THEN 180
+                    ELSE IF slope_r >= 4.5 and slope_r < 5.5 THEN 160
+                    ELSE IF slope_r >= 5.5 and slope_r < 6.5 THEN 150
+                    ELSE IF slope_r >= 6.5 and slope_r < 7.5 THEN 140
+                    ELSE IF slope_r >= 7.5 and slope_r < 8.5 THEN 130
+                    ELSE IF slope_r >= 8.5 and slope_r < 9.5 THEN 125
+                    ELSE IF slope_r >= 9.5 and slope_r < 10.5 THEN 120
+                    ELSE IF slope_r >= 10.5 and slope_r < 11.5 THEN 110
+                    ELSE IF slope_r >= 11.5 and slope_r < 12.5 THEN 100
+                    ELSE IF slope_r >= 12.5 and slope_r < 13.5 THEN 90
+                    ELSE IF slope_r >= 13.5 and slope_r < 14.5 THEN 80
+                    ELSE IF slope_r >= 14.5 and slope_r < 15.5 THEN 70
+                    ELSE IF slope_r >= 15.5 and slope_r < 17.5 THEN 60
+                    ELSE IF slope_r >= 17.5 THEN 50
+					ELSE null.
+
+# Uses Palouse region slope length lookup table (feet).
+DEFINE slopelen_palouse		IF slope_r >= 0 and slope_r < 5.5 THEN 350
+                    		ELSE IF slope_r >= 5.5 and slope_r < 10.5 THEN 275
+                    		ELSE IF slope_r >= 10.5 and slope_r < 15.5 THEN 225
+                    		ELSE IF slope_r >= 15.5 and slope_r < 20.5 THEN 175
+                    		ELSE IF slope_r >= 20.5 and slope_r < 25.5 THEN 150
+                    		ELSE IF slope_r >= 25.5 and slope_r < 35.5 THEN 125
+                    		ELSE IF slope_r >= 35.5 THEN 100
+							ELSE null.
+
+define palouse		if areasymbol imatches 'ID620' then 1 else if
+					areasymbol imatches 'ID057' then 1 else if
+					areasymbol imatches 'OR021' then 1 else if
+					areasymbol imatches 'OR049' then 1 else if
+					areasymbol imatches 'OR055' then 1 else if
+					areasymbol imatches 'OR625' then 1 else if
+					areasymbol imatches 'OR667' then 1 else if
+					areasymbol imatches 'OR670' then 1 else if
+					areasymbol imatches 'OR673' then 1 else if
+					areasymbol imatches 'WA001' then 1 else if
+ 					areasymbol imatches 'WA021' then 1 else if
+					areasymbol imatches 'WA025' then 1 else if
+					areasymbol imatches 'WA043' then 1 else if
+					areasymbol imatches 'WA063' then 1 else if
+					areasymbol imatches 'WA071' then 1 else if
+					areasymbol imatches 'WA075' then 1 else if
+					areasymbol imatches 'WA603' then 1 else if
+					areasymbol imatches 'WA605' then 1 else if
+					areasymbol imatches 'WA613' then 1 else if
+					areasymbol imatches 'WA617' then 1 else if
+					areasymbol imatches 'WA623' then 1 else if
+					areasymbol imatches 'WA639' then 1 else if
+					areasymbol imatches 'WA676' then 1 else if
+					areasymbol imatches 'WA677' then 1 else 0.
+define explanation	"Units are feet.".
+define slope_length	if palouse == 0 then slopelen else if
+			palouse == 1 then slopelen_palouse else slopelen.
+
+define length_fact	if slope_r < 1 then (slope_length/72.6)**0.2 else if
+			slope_r >=1 and slope_r < 3 then (slope_length/72.6)**0.3 else if
+			slope_r >=3 and slope_r < 4.5 then (slope_length/72.6)**0.4 else if
+			slope_r >= 4.5 then (slope_length/72.6)**0.5 else 0.
+
+define sine_theta	sin(atan(slope_r/100)).
+define steep_fact	(65.41)*(sine_theta**2)+(4.56*sine_theta)+0.065.
+define ls_factor	(length_fact)*(steep_fact).
+
+define erosion_index	((r_factor)*(k_factor)*(ls_factor))/tfact.
+
+DEFINE water_sensitive	((r_factor)*(k_factor)*(ls_factor)).
+
+define rv		ls_factor.
