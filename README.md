@@ -13,5 +13,14 @@ Conservation Planning and Technical Assistance Division (CPTAD) has initiated a 
     + [Slope Degrees](https://saga-gis.sourceforge.io/saga_tool_doc/7.1.0/ta_morphometry_0.html)
     + [LS -Slope Length](https://saga-gis.sourceforge.io/saga_tool_doc/7.1.0/ta_hydrology_22.html)
 
+### SQL Conditions
+1. Raw Script
+2. Script Breakdown
+3. Conditions
+    + Dominant Component
+    + Thickest Layer from 0 to 15 cm
+    + Eliminates dry organic (duff layers such as leaf litter)
+    
+
 
     
