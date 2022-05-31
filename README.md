@@ -6,7 +6,7 @@ CPTAD has initiated a project with RAB to incorporate a LiDAR enhanced version o
 1. SSURGO (Soil)
 2. Best available elevation (3 Meter)
     + Flow Direction
-    + Flow accumuklation
+    + [Flow accumulation](https://saga-gis.sourceforge.io/saga_tool_doc/7.1.0/ta_hydrology_0.html)
     + Stream Power Index
     + Slope Degrees
     + Slope Length
