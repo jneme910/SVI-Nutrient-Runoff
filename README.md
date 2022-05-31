@@ -4,9 +4,9 @@ CPTAD has initiated a project with RAB to incorporate a LiDAR enhanced version o
 
 ## Datasets
 1. SSURGO (Soil)
-2. Best available elevation (3 Meter)
+2. Best available elevation (3 Meter, min)
     + [Flow Direction](https://pro.arcgis.com/en/pro-app/latest/help/analysis/raster-functions/flow-direction-raster-function.htm#:~:text=The%20Flow%20Direction%20raster%20function,D%2DInfinity%20(DINF))
     + [Flow accumulation](https://saga-gis.sourceforge.io/saga_tool_doc/7.1.0/ta_hydrology_0.html)
-    + Stream Power Index
-    + Slope Degrees
-    + [Slope Length](https://saga-gis.sourceforge.io/saga_tool_doc/7.1.0/ta_hydrology_22.html)
+    + [Stream Power Index](https://saga-gis.sourceforge.io/saga_tool_doc/7.1.0/ta_hydrology_21.html)
+    + [Slope Degrees](https://saga-gis.sourceforge.io/saga_tool_doc/7.1.0/ta_morphometry_0.html)
+    + [LS -Slope Length](https://saga-gis.sourceforge.io/saga_tool_doc/7.1.0/ta_hydrology_22.html)
