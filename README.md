@@ -5,8 +5,8 @@ CPTAD has initiated a project with RAB to incorporate a LiDAR enhanced version o
 ## Datasets
 1. SSURGO (Soil)
 2. Best available elevation (3 Meter)
-  + Flow Direction
-  + Flow accumuklation
-  + Stream Power Index
-  + Slope Degrees
-  + Slope Length
+    + Flow Direction
+    + Flow accumuklation
+    + Stream Power Index
+    + Slope Degrees
+    + Slope Length
