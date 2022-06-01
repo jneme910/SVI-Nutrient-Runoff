@@ -1,5 +1,7 @@
 --# Get K factor value for surface horizon
 --Define the area
+DROP TABLE IF EXISTS #horizon;
+
 DECLARE @area VARCHAR(20);
 DECLARE @area_type INT ;
 DECLARE @major INT;
@@ -18,8 +20,44 @@ SELECT @area_type = LEN (@area); --determines number of characters of area 2-Sta
 SELECT @InRangeTop = 0;
 SELECT @InRangeBot = 15;
 
+CREATE TABLE #horizon
+    (
+		areasymbol	VARCHAR(10),
+		muname		VARCHAR(250),
+		compname	VARCHAR(250),
+		cokey		INT, 
+		chkey		INT,
+		hzdept_r	SMALLINT, 
+		hzdepb_r	SMALLINT, 
+		thickness	SMALLINT, 
+		hzname		VARCHAR(10),
+		desgnmaster	VARCHAR(10),
+		kwfact		REAL, 
+		taxorder	VARCHAR(40),
+		thickness2	SMALLINT, 
+		hz_rowid 	SMALLINT
 
-SELECT TOP 1000 l.areasymbol, muname, compname, c1.cokey, ch1.chkey, hzdept_r, hzdepb_r,  CASE WHEN hzdepb_r IS NULL THEN NULL
+    )
+
+INSERT INTO #horizon
+    (
+		areasymbol	,
+		muname		,
+		compname	,
+		cokey		, 
+		chkey		,
+		hzdept_r	,
+		hzdepb_r	,
+		thickness	, 
+		hzname		,
+		desgnmaster	,
+		kwfact		,
+		taxorder	,
+		thickness2	,
+		hz_rowid 	
+    )
+
+SELECT l.areasymbol, muname, compname, c1.cokey, ch1.chkey, hzdept_r, hzdepb_r,  CASE WHEN hzdepb_r IS NULL THEN NULL
 WHEN hzdept_r IS NULL THEN NULL
 WHEN hzdept_r > hzdepb_r THEN NULL
 WHEN hzdept_r = hzdepb_r THEN NULL ELSE
@@ -32,14 +70,22 @@ WHEN hzdepb_r <= @InRangeBot THEN hzdepb_r  WHEN hzdepb_r > @InRangeBot and hzde
 WHEN hzdept_r >@InRangeBot THEN 0 
 WHEN hzdepb_r >= @InRangeTop AND hzdept_r < @InRangeTop THEN @InRangeTop 
 WHEN hzdept_r < @InRangeTop THEN 0
-WHEN hzdept_r < @InRangeBot then hzdept_r ELSE @InRangeTop END AS thickness2
+WHEN hzdept_r < @InRangeBot then hzdept_r ELSE @InRangeTop END AS thickness2,
+
+ROW_NUMBER() OVER(PARTITION BY c1.cokey ORDER BY hzdept_r ASC, hzdepb_r ASC, ch1.chkey ASC) AS hz_rowid
 
 
 FROM  sacatalog AS  sc
  INNER JOIN legend  AS l ON l.areasymbol = sc.areasymbol
  INNER JOIN  mapunit AS mu ON mu.lkey = l.lkey AND  CASE WHEN @area_type = 2 THEN LEFT (l.areasymbol, 2) ELSE l.areasymbol END = @area
-INNER JOIN  component AS c1 ON c1.mukey = mu.mukey AND majcompflag = 'Yes' AND c1.cokey = 21387231
-INNER JOIN chorizon AS ch1 ON ch1.cokey=c1.cokey AND hzdepb_r > @InRangeTop AND hzdept_r < @InRangeBot 
+INNER JOIN  component AS c1 ON c1.mukey = mu.mukey AND majcompflag = 'Yes'
+AND c1.cokey =
+(SELECT TOP 1 c2.cokey FROM component AS c2 
+INNER JOIN mapunit AS mu2 ON c1.mukey=mu2.mukey AND c2.mukey=mu.mukey ORDER BY c1.comppct_r DESC, c1.cokey ) 
+
+INNER JOIN chorizon AS ch1 ON ch1.cokey=c1.cokey 
+
+AND hzdepb_r > @InRangeTop AND hzdept_r < @InRangeBot 
 AND (((CASE WHEN hzdept_r > @InRangeBot THEN 0
 WHEN hzdepb_r < @InRangeTop THEN 0
 WHEN hzdepb_r <= @InRangeBot THEN hzdepb_r  WHEN hzdepb_r > @InRangeBot and hzdept_r < @InRangeBot THEN @InRangeBot ELSE @InRangeTop END-CASE WHEN hzdepb_r < @InRangeTop THEN 0
@@ -56,38 +102,31 @@ WHEN hzdept_r >@InRangeBot THEN 0
 WHEN hzdepb_r >= @InRangeTop AND hzdept_r < @InRangeTop THEN @InRangeTop 
 WHEN hzdept_r < @InRangeTop THEN 0
 WHEN hzdept_r < @InRangeBot then hzdept_r ELSE @InRangeTop END ) AS MinOfhzdept_r
-FROM chorizon INNER JOIN chtexturegrp AS cht2 ON chorizon.chkey = cht2.chkey
-AND cht2.texture Not In ('SPM','HPM', 'MPM') AND cht2.rvindicator='Yes' AND c1.cokey = chorizon.cokey )))
+FROM chorizon 
+INNER JOIN chtexturegrp AS cht2 ON chorizon.chkey = cht2.chkey AND chorizon.hzname NOT LIKE '%O%'
+AND (CASE WHEN cht2.texture Not In ('SPM','HPM', 'MPM') THEN 1
+WHEN chorizon.hzname	LIKE '%O%' THEN 2
+WHEN chorizon.desgnmaster LIKE '%O%' THEN 2
+END = 1
 
+AND cht2.rvindicator='Yes' AND c1.cokey = chorizon.cokey ))))
 ORDER BY areasymbol, musym, muname, mu.mukey, comppct_r DESC, cokey,  hzdept_r, hzdepb_r
 
---INNER JOIN chtexturegrp AS chtg1 ON chtg1.chkey=ch1.chkey AND chtg1.rvindicator = 'yes'
---INNER JOIN chtexture AS cht1 ON cht1.chtgkey=cht1.chtgkey
-
---GROUP BY l.areasymbol, muname, compname, c1.cokey, ch1.chkey, hzdept_r, hzdepb_r, hzname, desgnmaster, -- lieutex 
---kwfact, taxorder
---ORDER BY c1.cokey ASC, ch1.chkey ASC, hzdept_r ASC, hzdepb_r ASC
 
 
-/*	join chtexturegrp to chtexture 
-AND (desgnmaster is null or not (desgnmaster in ("O", "O'", "O''")) OR not (lieutex in ("mpm", "mpt", "muck", "peat", "spm", "udom", "pdom", "hpm")) OR hzname is null or not (hzname in ("O*")));
-    sort by hzdept_r, hzdepb_r
-    aggregate column hzdept_r none, hzdepb_r none, kwfact none.
+SELECT areasymbol	,
+		muname		,
+		compname	,
+		cokey		, 
+		chkey		,
+		hzdept_r	,
+		hzdepb_r	,
+		thickness	, 
+		hzname		,
+		desgnmaster	,
+		kwfact		,
+		taxorder	,
+		thickness2	,
+		hz_rowid 	
+FROM #horizon WHERE hz_rowid = 1
 
-# Find thickness of each horizon in 0-15cm range.
- derive layer_thickness using "NSSC Pangaea":"HORIZON THICKNESS IN RANGE" (0,15).
-
-# Determine the maximum horizon thickness in the range.
- define max_thickness arraymax(layer_thickness).
-
-# From thickest horizon in range, return kwfact.
-define erosfact  arraymax(lookup(max_thickness, layer_thickness, codename(kwfact)) + 0).
-
-define rv if codename(taxorder) == "histosols" then 0.02 else erosfact.
-
-
-CASE WHEN hzdepb_r IS NULL THEN 0
-WHEN hzdept_r IS NULL THEN 0 ELSE hzdepb_r-hzdept_r END AS thickness, 
-CASE  WHEN hzdept_r < 15 then hzdept_r ELSE 0 END AS AGG_InRangeTop_0_15, 
-CASE  WHEN hzdepb_r <= 15 THEN hzdepb_r WHEN hzdepb_r > 15 and hzdept_r < 15 THEN 15 ELSE 0 END AS AGG_InRangeBot_0_15
-*/

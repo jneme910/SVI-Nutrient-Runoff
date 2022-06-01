@@ -5,23 +5,31 @@ DROP TABLE IF EXISTS #third2;
 DROP TABLE IF EXISTS #fourth3;
 DROP TABLE IF EXISTS #r_factor2 ;
 DROP TABLE IF EXISTS #fifth;
-
+DROP TABLE IF EXISTS #horizon;
 
 --Define the area
 DECLARE @area VARCHAR(20);
 DECLARE @area_type INT ;
+DECLARE @InRangeTop INT;
+DECLARE @InRangeBot INT;
 DECLARE @major INT;
 
+
 -- Soil Data Access
-/*~DeclareChar(@area,20)~  -- Used for Soil Data Access
+/*
+~DeclareChar(@area,20)~  -- Used for Soil Data Access
 ~DeclareINT(@area_type)~
+~DeclareINT(@InRangeTop)~
+~DeclareINT(@InRangeBot)~
+~DeclareINT(@major)~
 */
---~DeclareINT(@area_type)~ 
 -- End soil data access
 
-SELECT @area= 'WI025'; --Enter State Abbreviation or Soil Survey Area i.e. WI or WI025
+SELECT @area= 'WI003'; --Enter State Abbreviation or Soil Survey Area i.e. WI or WI025
 SELECT @area_type = LEN (@area); --determines number of characters of area 2-State, 5- Soil Survey Area
 SELECT @major = 0; -- Enter 0 for major component, enter 1 for all components
+SELECT @InRangeTop = 0;
+SELECT @InRangeBot = 15;
 
 CREATE TABLE #main3
     (
@@ -134,9 +142,100 @@ SELECT sc.areasymbol, mu.mukey, muname,  c.cokey, slope_r, slopelenusle_r, tfact
 				CONCAT([sc].[areasymbol], ' ', FORMAT([sc].[saverest], 'dd-MM-yy')) AS datestamp
  FROM  sacatalog AS  sc
  INNER JOIN legend  AS l ON l.areasymbol = sc.areasymbol
- INNER JOIN  mapunit AS mu ON mu.lkey = l.lkey AND  CASE WHEN @area_type = 2 THEN LEFT (l.areasymbol, 2) ELSE l.areasymbol END = @area
+ INNER JOIN  mapunit AS mu ON mu.lkey = l.lkey AND l.areasymbol <> 'US' -- CASE WHEN @area_type = 2 THEN LEFT (l.areasymbol, 2) ELSE l.areasymbol END = @area
  INNER JOIN  component AS c ON c.mukey = mu.mukey AND majcompflag = 'Yes'
  ORDER BY sc.areasymbol, musym, muname, mu.mukey
+
+
+ ----Horizon
+CREATE TABLE #horizon
+    (
+		areasymbol	VARCHAR(10),
+		muname		VARCHAR(250),
+		compname	VARCHAR(250),
+		cokey		INT, 
+		chkey		INT,
+		hzdept_r	SMALLINT, 
+		hzdepb_r	SMALLINT, 
+		thickness	SMALLINT, 
+		hzname		VARCHAR(30),
+		desgnmaster	VARCHAR(20),
+		kwfact		REAL, 
+		taxorder	VARCHAR(250),
+		thickness2	SMALLINT, 
+		hz_rowid 	SMALLINT
+
+    )
+
+INSERT INTO #horizon
+    (
+		areasymbol	,
+		muname		,
+		compname	,
+		cokey		, 
+		chkey		,
+		hzdept_r	,
+		hzdepb_r	,
+		thickness	, 
+		hzname		,
+		desgnmaster	,
+		kwfact		,
+		taxorder	,
+		thickness2	,
+		hz_rowid 	
+    )
+
+ SELECT areasymbol, muname, compname, c1.cokey, ch1.chkey, hzdept_r, hzdepb_r,  CASE WHEN hzdepb_r IS NULL THEN NULL
+WHEN hzdept_r IS NULL THEN NULL
+WHEN hzdept_r > hzdepb_r THEN NULL
+WHEN hzdept_r = hzdepb_r THEN NULL ELSE
+CASE WHEN hzdepb_r > @InRangeBot THEN @InRangeBot ELSE hzdepb_r END END - hzdept_r AS thickness,
+hzname, desgnmaster, --lieutex ,
+kwfact, taxorder, 
+CASE WHEN hzdept_r > @InRangeBot THEN 0
+WHEN hzdepb_r < @InRangeTop THEN 0
+WHEN hzdepb_r <= @InRangeBot THEN hzdepb_r  WHEN hzdepb_r > @InRangeBot and hzdept_r < @InRangeBot THEN @InRangeBot ELSE @InRangeTop END-CASE WHEN hzdepb_r < @InRangeTop THEN 0
+WHEN hzdept_r >@InRangeBot THEN 0 
+WHEN hzdepb_r >= @InRangeTop AND hzdept_r < @InRangeTop THEN @InRangeTop 
+WHEN hzdept_r < @InRangeTop THEN 0
+WHEN hzdept_r < @InRangeBot then hzdept_r ELSE @InRangeTop END AS thickness2,
+
+ROW_NUMBER() OVER(PARTITION BY c1.cokey ORDER BY hzdept_r ASC, hzdepb_r ASC, ch1.chkey ASC) AS hz_rowid
+FROM #main3 AS m 
+INNER JOIN component AS c1 ON m.mukey=c1.mukey 
+AND c1.cokey =
+(SELECT TOP 1 c2.cokey FROM component AS c2 
+INNER JOIN mapunit AS mu2 ON c1.mukey=mu2.mukey AND c2.mukey=m.mukey ORDER BY c1.comppct_r DESC, c1.cokey ) 
+
+INNER JOIN chorizon AS ch1 ON ch1.cokey=c1.cokey 
+
+AND hzdepb_r > @InRangeTop AND hzdept_r < @InRangeBot 
+AND (((CASE WHEN hzdept_r > @InRangeBot THEN 0
+WHEN hzdepb_r < @InRangeTop THEN 0
+WHEN hzdepb_r <= @InRangeBot THEN hzdepb_r  WHEN hzdepb_r > @InRangeBot and hzdept_r < @InRangeBot THEN @InRangeBot ELSE @InRangeTop END-CASE WHEN hzdepb_r < @InRangeTop THEN 0
+WHEN hzdept_r >@InRangeBot THEN 0 
+WHEN hzdepb_r >= @InRangeTop AND hzdept_r < @InRangeTop THEN @InRangeTop 
+WHEN hzdept_r < @InRangeTop THEN 0
+WHEN hzdept_r < @InRangeBot then hzdept_r ELSE @InRangeTop END  )
+
+
+=(SELECT MAX(CASE WHEN hzdept_r > @InRangeBot THEN 0
+WHEN hzdepb_r < @InRangeTop THEN 0
+WHEN hzdepb_r <= @InRangeBot THEN hzdepb_r  WHEN hzdepb_r > @InRangeBot and hzdept_r < @InRangeBot THEN @InRangeBot ELSE @InRangeTop END-CASE WHEN hzdepb_r < @InRangeTop THEN 0
+WHEN hzdept_r >@InRangeBot THEN 0 
+WHEN hzdepb_r >= @InRangeTop AND hzdept_r < @InRangeTop THEN @InRangeTop 
+WHEN hzdept_r < @InRangeTop THEN 0
+WHEN hzdept_r < @InRangeBot then hzdept_r ELSE @InRangeTop END ) AS MinOfhzdept_r
+FROM chorizon 
+INNER JOIN chtexturegrp AS cht2 ON chorizon.chkey = cht2.chkey AND chorizon.hzname NOT LIKE '%O%'
+AND (CASE WHEN cht2.texture Not In ('SPM','HPM', 'MPM') THEN 1
+WHEN chorizon.hzname	LIKE '%O%' THEN 2
+WHEN chorizon.desgnmaster LIKE '%O%' THEN 2
+END = 1
+
+AND cht2.rvindicator='Yes' AND c1.cokey = chorizon.cokey ))))
+ORDER BY  cokey,  hzdept_r, hzdepb_r
+
 
 CREATE TABLE #second2
     (
@@ -383,7 +482,7 @@ CREATE TABLE #r_factor2
 areasymbol VARCHAR(10),
 r_factor float
  CONSTRAINT pk_rf_index2 PRIMARY KEY CLUSTERED (rfid ))
-	  go
+	  
 
 
 INSERT INTO #r_factor2 SELECT	'149A'	,	189	;
@@ -3620,8 +3719,8 @@ SELECT 	f.areasymbol AS f_areasymbol,
 		rf.areasymbol AS rf_areasymbol, --new
         musym  ,
         mukey  ,
-        muname ,
-		cokey  ,
+        f.muname ,
+		f.cokey  ,
 		slope_r   ,
 		slopelenusle_r,
 		tfact		,
@@ -3635,10 +3734,38 @@ SELECT 	f.areasymbol AS f_areasymbol,
 		steep_fact,
 		ls_factor,
 		r_factor , -- new
+		kwfact		,  -- new
+		taxorder	,  -- new
+		((r_factor)*(kwfact)*(ls_factor))/tfact AS erosion_index,
+		((r_factor)*(kwfact)*(ls_factor)) water_sensitive,
 		datestamp 
 FROM #fifth AS f
 INNER JOIN #r_factor2  AS rf ON rf.areasymbol=f.areasymbol
+INNER JOIN #horizon AS h ON h.cokey=f.cokey
 
+GROUP BY 	f.areasymbol ,
+		rf.areasymbol ,
+        musym  ,
+        mukey  ,
+        f.muname ,
+		f.cokey  ,
+		slope_r   ,
+		slopelenusle_r,
+		tfact		,
+        major_mu_pct_sum,
+		slopelen	, 
+		slopelen_palouse , 
+		palouse,
+		slope_length,
+		length_fact,
+		sine_theta ,
+		steep_fact,
+		ls_factor,
+		r_factor , 
+		kwfact		,  
+		taxorder	,  
+		datestamp 
+ORDER BY f.areasymbol, muname, mukey, f.cokey  
 
  DROP TABLE IF EXISTS #main3;
  DROP TABLE IF EXISTS #second2;
@@ -3646,3 +3773,4 @@ INNER JOIN #r_factor2  AS rf ON rf.areasymbol=f.areasymbol
  DROP TABLE IF EXISTS #fourth3;
  DROP TABLE IF EXISTS #r_factor2 ;
  DROP TABLE IF EXISTS #fifth;
+ DROP TABLE IF EXISTS #horizon;
