@@ -16,11 +16,13 @@ Conservation Planning and Technical Assistance Division (CPTAD) has initiated a 
 ### SQL Conditions
 1. [Raw Script - Managment Studio](https://github.com/jneme910/SVI-Nutrient-Runoff/blob/main/SQL/SDA_rkls.sql)
 2. [Raw Script - Soil Data Access](https://github.com/jneme910/SVI-Nutrient-Runoff/blob/main/SQL/SDA_version_rkls.txt)
-3. Script Breakdown
-4. Conditions
+3. Metadata
+4. Script Breakdown
+5. Conditions
     + Dominant Component
     + Thickest Layer from 0 to 15 cm
     + Eliminates dry organic (duff layers such as leaf litter)
+    + If Soil Component name equals "histosols" then assign 0.02 to Kfactor (Soil Erodibility)
     
 
 
