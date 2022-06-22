@@ -1,5 +1,5 @@
 USE sdmOnline;
-DROP TABLE IF EXISTS #main3;
+DROP TABLE IF EXISTS #main4;
 DROP TABLE IF EXISTS #second2;
 DROP TABLE IF EXISTS #third2;
 DROP TABLE IF EXISTS #fourth3;
@@ -9,6 +9,8 @@ DROP TABLE IF EXISTS #horizon3;
 DROP TABLE IF EXISTS #horizon4;
 DROP TABLE IF EXISTS #horizon5;
 --Define the area
+DECLARE @allssa INT;
+DECLARE @statsgo INT;
 DECLARE @area VARCHAR(20);
 DECLARE @area_type INT ;
 DECLARE @InRangeTop INT;
@@ -18,21 +20,26 @@ DECLARE @major INT;
 
 -- Soil Data Access
 /*
-~DeclareChar(@area,20)~  -- Used for Soil Data Access
-~DeclareINT(@area_type)~
-~DeclareINT(@InRangeTop)~
-~DeclareINT(@InRangeBot)~
-~DeclareINT(@major)~
+~DeclareChar(@area,20)~  --Enter State Abbreviation or Soil Survey Area i.e. WI or WI025
+--~DeclareINT(@allssa)~  --Enter 1 for All Soil Survey areas including STATSGO -- Need to add dynamic operator; WHERE (A = B AND @equalOp = 1) OR (A > B AND @gtOp = 1) OR (A < B AND @ltOp = 1)
+--~DeclareINT(@statsgo)~ -- Enter 1 to exclude STATSGO and Run all Soil Survey Areas -- Need to add dynamic operator; WHERE (A = B AND @equalOp = 1) OR (A > B AND @gtOp = 1) OR (A < B AND @ltOp = 1)
+~DeclareINT(@area_type)~ --determines number of characters of area 2-State, 5- Soil Survey Area
+~DeclareINT(@InRangeTop)~ -- Top Soil Depth
+~DeclareINT(@InRangeBot)~  -- Botom Soil Depth
+~DeclareINT(@major)~ -- Enter 0 for major component, enter 1 for all component
 */
 -- End soil data access
-
-SELECT @area= 'WI003'; --Enter State Abbreviation or Soil Survey Area i.e. WI or WI025
-SELECT @area_type = LEN (@area); --determines number of characters of area 2-State, 5- Soil Survey Area
+--SELECT @statsgo = 1;-- Enter 1 to exclude STATSGO and Run all Soil Survey Areas
+--SELECT @allssa = 1; --Enter 1 for All Soil Survey areas including STATSGO
+SELECT @area= 'WI087'; --Enter State Abbreviation or Soil Survey Area i.e. WI or WI025
 SELECT @major = 0; -- Enter 0 for major component, enter 1 for all components
 SELECT @InRangeTop = 0;
 SELECT @InRangeBot = 15;
+---
+SELECT @area_type = LEN (@area); --determines number of characters of area 2-State, 5- Soil Survey Area
+---
 
-CREATE TABLE #main3
+CREATE TABLE #main4
     (
         areasymbol        VARCHAR(255),
         musym            VARCHAR(20),
@@ -49,9 +56,10 @@ CREATE TABLE #main3
         datestamp        VARCHAR(32)
     )
 
-INSERT INTO #main3
+INSERT INTO #main4
     (
         areasymbol,
+		 musym,
 		mukey,
         muname,
         cokey, 
@@ -65,7 +73,7 @@ INSERT INTO #main3
         datestamp
     )
 
-SELECT sc.areasymbol, mu.mukey, muname,  c.cokey, slope_r, slopelenusle_r, tfact,  
+SELECT sc.areasymbol, musym, mu.mukey, muname,  c.cokey, slope_r, slopelenusle_r, tfact,  
 
                 (
                     SELECT
@@ -144,8 +152,19 @@ SELECT sc.areasymbol, mu.mukey, muname,  c.cokey, slope_r, slopelenusle_r, tfact
  FROM  sacatalog AS  sc
  INNER JOIN legend  AS l ON l.areasymbol = sc.areasymbol
  INNER JOIN  mapunit AS mu ON mu.lkey = l.lkey --AND l.areasymbol = 'US' 
- --AND CASE WHEN @area_type = 2 THEN LEFT (l.areasymbol, 2) ELSE l.areasymbol END = @area
- INNER JOIN  component AS c ON c.mukey = mu.mukey AND majcompflag = 'Yes'
+ 
+ AND CASE  WHEN @area_type = 2 THEN LEFT (l.areasymbol, 2) ELSE l.areasymbol END  = @area
+
+
+ INNER JOIN  component AS c ON c.mukey = mu.mukey  AND (CASE
+                                    WHEN 1 = @major
+                                        THEN 0
+                                    WHEN majcompflag = 'Yes'
+                                        THEN 0
+                                    ELSE
+                                        1
+                                END = 0
+                               )
  ORDER BY sc.areasymbol, musym, muname, mu.mukey
 
 
@@ -241,7 +260,7 @@ WHEN taxorder = 'Histosols' THEN 0.02
 WHEN desgnmaster LIKE '%O%' THEN 0.02  
 WHEN hzname LIKE '%O%' THEN 0.02 ELSE kwfact 
 END AS kwfact
-FROM #main3 AS m 
+FROM #main4 AS m 
 INNER JOIN component AS c1 ON m.mukey=c1.mukey 
 AND c1.cokey =
 (SELECT TOP 1 c2.cokey FROM component AS c2 
@@ -502,7 +521,7 @@ INSERT INTO #second2
 		palouse		    ,
 		CASE WHEN palouse = 0 THEN slopelen WHEN palouse = 1 then slopelen_palouse else slopelen END AS slope_length,
         datestamp
- FROM #main3
+ FROM #main4
 
  CREATE TABLE #third2
     (
@@ -4128,7 +4147,7 @@ SELECT 	f.areasymbol AS f_areasymbol,
 		((r_factor)*(kwfact)*(ls_factor)) water_sensitive,
 		datestamp 
 FROM #fifth AS f
-LEFT OUTER JOIN #r_factor3  AS rf ON rf.areasymbol=f.areasymbol
+INNER JOIN #r_factor3  AS rf ON rf.areasymbol=f.areasymbol
 INNER JOIN #horizon5 AS h ON h.cokey=f.cokey
 
 GROUP BY 	f.areasymbol ,
@@ -4165,7 +4184,7 @@ GROUP BY 	f.areasymbol ,
 		datestamp 
 ORDER BY f.areasymbol, muname, mukey, f.cokey  
 
- DROP TABLE IF EXISTS #main3;
+ DROP TABLE IF EXISTS #main4;
  DROP TABLE IF EXISTS #second2;
  DROP TABLE IF EXISTS #third2;
  DROP TABLE IF EXISTS #fourth3;
