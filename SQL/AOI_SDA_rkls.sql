@@ -4312,11 +4312,13 @@ SELECT 	landunit,
 	taxorder,	
 	erosion_index,
 	water_sensitive,
-	CASE WHEN water_sensitive BETWEEN	0.000000	AND  76.449699  THEN 1
-	 WHEN water_sensitive BETWEEN		76.449700	AND 175.720001  THEN 2
-	 WHEN  water_sensitive BETWEEN		175.720002	AND 293.372986 THEN 3
-	 WHEN water_sensitive BETWEEN		293.372987	AND 504.829987 THEN 4
-	 WHEN water_sensitive BETWEEN	    504.829988  AND 836.614990 THEN 5 ELSE 0 
+	CASE WHEN water_sensitive BETWEEN	0.000281452 AND 5.990581464  THEN 1
+	 WHEN water_sensitive BETWEEN		5.990581465 AND 28.66695351  THEN 2
+	 WHEN  water_sensitive BETWEEN		28.66695352 AND 114.5087057 THEN 3
+	 WHEN water_sensitive BETWEEN		114.5087058 AND 439.4639675 THEN 4
+	 WHEN water_sensitive BETWEEN	    439.4639676 AND 1669.587067 THEN 5 
+	 WHEN water_sensitive BETWEEN	    1669.587068 AND 6326.236816 THEN 6
+	 ELSE 0 
 	END AS class_water_sensitive,
 	datestamp 
 	FROM #final2
