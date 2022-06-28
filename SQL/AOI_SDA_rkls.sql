@@ -11,8 +11,10 @@ DROP TABLE IF EXISTS #fifth;
 DROP TABLE IF EXISTS #horizon3;
 DROP TABLE IF EXISTS #horizon4;
 DROP TABLE IF EXISTS #horizon5;
-DROP TABLE IF EXISTS #sviaoitable
-DROP TABLE IF EXISTS #sviaoisoils
+DROP TABLE IF EXISTS #sviaoitable;
+DROP TABLE IF EXISTS #sviaoisoils;
+DROP TABLE IF EXISTS #final2;
+
 --Define the area
 DECLARE @allssa INT;
 DECLARE @statsgo INT;
@@ -4168,10 +4170,65 @@ INSERT INTO #r_factor3 SELECT	'WY721'	,	17.538	;
 INSERT INTO #r_factor3 SELECT	'WY723'	,	7.7867	;
 INSERT INTO #r_factor3 SELECT	'WY737'	,	9.2443	;
 
+ CREATE TABLE #final2
+   (
+		landunit  VARCHAR(255),
+        areasymbol        VARCHAR(255),
+        musym            VARCHAR(20),
+        mukey            INT,
+        muname           VARCHAR(250),
+		cokey            INT,
+		slope_r          INT,
+		slopelenusle_r   INT,
+		tfact			 INT,
+        major_mu_pct_sum SMALLINT,
+		slopelen		 INT, 
+		slopelen_palouse INT, 
+		palouse		     INT,
+		slope_length     INT,
+		length_fact		 REAL,
+		sine_theta		 REAL,
+		steep_fact		 REAL,
+		ls_factor		 REAL,
+      	r_factor		 REAL,
+		kwfact			 REAL,
+		taxorder		VARCHAR(250),
+		erosion_index	 REAL,
+		water_sensitive	 REAL,
+		datestamp VARCHAR(32)
+    )
 
-SELECT landunit, 	f.areasymbol AS f_areasymbol,
-		rf.areasymbol AS rf_areasymbol, --new
+INSERT INTO #final2
+  (
+	landunit,
+	areasymbol,
         musym  ,
+        mukey  ,
+        muname ,
+	cokey  ,
+	slope_r   ,
+	slopelenusle_r,
+	tfact		,
+        major_mu_pct_sum,
+	slopelen	, 
+	slopelen_palouse , 
+	palouse,
+	slope_length,
+	length_fact,
+	sine_theta ,
+	steep_fact,
+	ls_factor,
+	r_factor,
+	kwfact,
+	taxorder,	
+	erosion_index,
+	water_sensitive,	
+	datestamp 
+    )
+
+SELECT landunit, 	
+	    f.areasymbol AS areasymbol,
+	    musym  ,
         f.mukey  ,
         f.muname ,
 		f.cokey  ,
@@ -4230,6 +4287,39 @@ GROUP BY landunit,	f.areasymbol ,
 		dbthirdbar,	
 		datestamp 
 ORDER BY f.areasymbol, muname, mukey, f.cokey  
+
+
+SELECT 	landunit,
+	areasymbol,
+        musym  ,
+        mukey  ,
+        muname ,
+	cokey  ,
+	slope_r   ,
+	slopelenusle_r,
+	tfact		,
+        major_mu_pct_sum,
+	slopelen	, 
+	slopelen_palouse , 
+	palouse,
+	slope_length,
+	length_fact,
+	sine_theta ,
+	steep_fact,
+	ls_factor,
+	r_factor,
+	kwfact,
+	taxorder,	
+	erosion_index,
+	water_sensitive,
+	CASE WHEN water_sensitive BETWEEN	0.000000	AND  76.449699  THEN 1
+	 WHEN water_sensitive BETWEEN		76.449700	AND 175.720001  THEN 2
+	 WHEN  water_sensitive BETWEEN		175.720002	AND 293.372986 THEN 3
+	 WHEN water_sensitive BETWEEN		293.372987	AND 504.829987 THEN 4
+	 WHEN water_sensitive BETWEEN	    504.829988  AND 836.614990 THEN 5 ELSE 0 
+	END AS class_water_sensitive,
+	datestamp 
+	FROM #final2
 
  DROP TABLE IF EXISTS #main4;
  DROP TABLE IF EXISTS #second2;

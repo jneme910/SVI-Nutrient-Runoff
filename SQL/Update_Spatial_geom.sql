@@ -1,0 +1,1 @@
+update sdm_spatial.dbo.r_factor set geom = geometry::STGeomFromText(geom.STAsText(), 4326)
