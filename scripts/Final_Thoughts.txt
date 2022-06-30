@@ -1,0 +1,37 @@
+Final thoughts:
+1. The SLD mechanism is clumsy for thematic maps and the resultant maps neither as fast to create nor as clean for polygon labeling compared to the default maps. A better approach would be to roll in some extra URL parameters for layers using names that start with:
+po mapunitpolygon
+pt mapunitpoint
+ln mapunitline
+pox mapunitpolygonthematic
+ptx mapunitpointthematic
+lnx mapunitlinethematic
+pot mapunitpolygpnthematic
+ptt mapunitpointthematic
+lnt mapunitlinethematic
+These would be followed by an underscore and the attribute name as appropriate to the layer.
+_nl no labels (edfault is to show lables if scale-appropriate)
+_po polygon fill opacity (0.0 for transparent, 1.0 for opaque)
+_ls label font size (pixels)
+_lc label color, six hex digits (rrggbb values, each color from 00 to ff)
+_pc polygon border color, six hex digits (rrggbb values, each color from 00 to ff)
+_pw polygon border width (pixels), from 0.0 to 50.0
+Unspecified values default to the WSS default values.
+
+For example one of the CD value sets would be replaced by:
+pot_ls=22&pot_lc=FFAA00&pot_pc=FFAA00&pot_pw=4
+This could be introduced without breaking current
+
+2. Consequences for SDA for the above-suggested changes:
+a. The command parser would need to be modified to support the new arguments.
+b. The command parser test set would need to be extended.
+c. The mapfile template file might be restructured to be less unwieldy to
+edit and fasster to interpolate new values.
+d. The Web Services help file would need to show these additional parameters.
+
+3. The ordering of legend records in the AoiSoilThematicMapLegend does not preserve the load order sequence. It may be possible to fix this in the stored procedures
+bafsdacache.dbo.SDA_LoadAdHocInterpretation
+sdmonline.dbo.SDA_LoadAdHocInterpretation
+
+4. SDA still needs a repair for presentation of WSS interpretations - the parameter
+"thematicmapid" is not properly handled.

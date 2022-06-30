@@ -1,0 +1,4913 @@
+MAP
+# Notes
+# 1. Attribute formats (in all cases surrounded by braces, omitted here)
+#  prefix:            name:                   description:
+#  tilde dollar-sign  WebConfigSetting.name   appSetting from Web.config
+#  tilde dollar-sign  ConnectionString.name   connection string from Web.config
+#  tilde at-sign      name                    attribute defined by service class's static constructor
+#  tilde caret        name                    attribute defined in context of service class's instance
+#  (none)             name                    ad-hoc attribute
+# 2. Layer names MUST all be in lower case.
+# 3. Preferred SRID is 4326 (WGS84)
+# 4. The layer NAME list must match that presented in the SDMSpatialService Web.config file. 
+
+NAME '{~^mapname}'
+STATUS ON
+SIZE 750 500
+MAXSIZE 5000
+
+symbol
+	name 'map unit point'
+	type vector
+	points 0 0  0 1  1 1  1 0  0 0  end
+	filled true
+end
+symbol
+	name 'circle'
+	filled true
+	type ellipse
+	points 0 0 1 1 end
+end
+symbol
+	name 'hatch'
+	type hatch
+end
+symbol
+	name 'triangle'
+	type vector
+	points  0 4  2 0  4 4  0 4  end
+	filled true
+end
+
+{MapExtentStatement}
+{MapUnitsStatement}
+IMAGECOLOR 255 255 255
+FONTSET '{~@RootPath_UnixFormat}/Resources/SDAMapserverFonts.txt'  # note need for Unix/Linux slash orientation convention
+
+WEB
+  #IMAGEPATH 'c:\ms4w\tmp\ms_tmp'
+  #IMAGEURL '/ms_tmp/'
+  METADATA
+	'ows_title'             '{~^title}'
+	'ows_abstract'          '{~^abstract}'
+	'ows_keywordlist'       'NRCS,Soils,SSURGO,Mapunit'
+	'ows_onlineresource'    '{~^onlineResourceUrl}'
+	'ows_fees'              'none'
+	'ows_accessconstraints' 'none'
+	'ows_service_onlineresource'  '{~^onlineResourceUrl}'
+	'ows_contactorganization'     'National Soil Survey Center, NRCS, USDA'
+	'ows_contactinstructions'     'Email, phone or fax.'
+	'ows_contactperson'     'Steve Peaslee'
+	'ows_contactposition'   'GIS Specialist'
+	'ows_contactvoicetelephone' '402-437-4084'
+	'ows_contactfacsimiletelephone'  '402-437-5336'
+	'ows_addresstype'       'Postal address'
+	'ows_address'           'US Soil Survey, Robert V. Denney Federal Building and U.S. Courthouse, 100 Centennial Mall N # 152'
+	'ows_city'              'Lincoln'
+	'ows_stateorprovince'   'NE'
+	'ows_postcode'          '68508'
+	'ows_country'           'USA'
+	'ows_contactelectronicmailaddress'   'steve.peaslee@lin.usda.gov'
+	'ows_hoursofservice'    'n/a'
+	'ows_role'              'n/a'
+	'ows_enable_request'    '*'
+	'wfs_srs'               '{AdvertisedSrs}'
+	'wms_srs'               'EPSG:3857 EPSG:4326'
+	'ows_feature_info_mime_type' 'text/html'
+	'ows_sld_enabled'       'true'
+  END  # WEB  Metadata
+  
+END  # WEB
+
+{~? {~$WebConfigSetting.DebugMapfile} {~$WebConfigSetting.DebugMapfileStatements} }
+CONFIG PROJ_LIB '{~@RootPath_UnixFormat}/Resources/'  # note need for trailing / and Unix/Linux slash orientation convention
+
+{MapProjectionStatement}
+
+{~? {UseGeographicData}
+  UNITS DD
+}
+{~? {UseProjectedData}
+  UNITS METERS
+}
+
+# Mapunit Polygons
+LAYER
+  NAME mapunitpoly
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE POLYGON
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Polygon'
+	'ows_abstract'          'Map unit polygons delineating soil types.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,polygons'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'MUKEY'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPolygon'
+	'gml_multiPolygon_type' 'multipolygon'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END # metadata
+   
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+{~? {UseGeographicData}
+		UNITS DD
+	{~? {IsNotAoi}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygongeo from (
+				-- case mapunitpoly UseGeographicData IsNotAoi useSpatialFilter IsPolylabelMultipart
+				select 
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, '' as AoiPartName, uniquekey
+				from SDA_Get_Simple_Mupolygons_clipped_to_WGS84_Bbox ({spatialFilter})
+			) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygongeo from (
+				-- case mapunitpoly UseGeographicData IsNotAoi useSpatialFilter IsPolylabelNormal
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, '' as AoiPartName, mupolygonkey 
+				from sdm.dbo.mupolygon with(index(pk_mupolygon))
+				where mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygongeo from (
+				-- case mapunitpoly UseGeographicData IsNotAoi NOT useSpatialFilter IsPolylabel... n/a
+				select 
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, '' as AoiPartName, mupolygonkey 
+				from sdm.dbo.mupolygon
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiAdHoc}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygongeo from (
+				-- case mapunitpoly UseGeographicData IsAoiAdHoc useSpatialFilter IsPolylabelMultipart
+				select
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, AoiPartName, uniquekey as mupolygonkey
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_AdHocAoi_and_WGS84_Bbox ({AoiID}, {spatialFilter})
+				) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygongeo from (
+				-- case mapunitpoly UseGeographicData IsAoiAdHoc useSpatialFilter IsPolylabelNormal
+				select
+					areasymbol, spatialversion, MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym, MapUnitKey as mukey, 
+					AreaAcres as muareaacres, AoiSoilMapUnitPolygonGeo as mupolygongeo, 
+					mupolygonkey 
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon with(nolock)
+				where AoiID = {AoiID}
+				and mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygongeo from (
+				-- case mapunitpoly UseGeographicData IsAoiAdHoc NOT useSpatialFilter IsPolylabel... n/a
+				select
+					areasymbol, spatialversion, MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym, MapUnitKey as mukey, 
+					AreaAcres as muareaacres, AoiSoilMapUnitPolygonGeo as mupolygongeo, 
+					mupolygonkey 
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon with(nolock)
+				where AoiID = {AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiSsaBased}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygongeo from (
+				-- case mapunitpoly geographic, SSA Aoi, spatial filter, polylabel=multipart
+				SELECT
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, uniquekey as [mupolygonkey]
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_SSAAoi_and_WGS84_Bbox ({AoiID}, {spatialFilter}) MUPOLY
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygongeo from (
+				-- case mapunitpoly geographic, SSA Aoi, spatial filter, polylabel=normal
+				SELECT 
+					mupoly.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, mupolygonkey
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				dbo.mupolygon mupoly
+				where AOI.areasymbol = mupoly.areasymbol 
+				and AOI.aoiid={AoiID}
+				and mupoly.mupolygongeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygongeo from (
+				-- case mapunitpoly geographic, SSA Aoi, no spatial filter, polylabel na
+				SELECT 
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, mupolygonkey
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+				where AOI.areasymbol = mupoly.areasymbol 
+				and AOI.aoiid={AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiMukeyListBased}
+		{~? {useSpatialFilter}
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygongeo from (
+				-- case mapunitpoly UseGeographicData IsAoiMukeyListBased useSpatialFilter IsPolylabelMultipart
+				select 
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, AoiPartName,	uniquekey as mupolygonkey 
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_MukeylistAoi_and_WGS84_Bbox ({AoiID}, {spatialFilter})
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygongeo from (
+				-- case mapunitpoly UseGeographicData IsAoiMukeyListBased useSpatialFilter IsPolylabelNormal
+				select MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupolygongeo, mupolygonkey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				and mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygongeo from (
+				-- case mapunitpoly UseGeographicData IsAoiMukeyListBased NOT useSpatialFilter IsPolylabel... n/a
+				select 
+					MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, mupolygonkey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}		
+}
+
+{~? {UseProjectedData}
+		UNITS METERS
+	{~? {IsNotAoi}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData IsNotAoi useSpatialFilter IsPolylabelMultipart
+				select 
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, '' as AoiPartName, uniquekey
+				from SDA_Get_Simple_Mupolygons_clipped_to_WM_Bbox ({spatialFilter})
+			) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData IsNotAoi useSpatialFilter IsPolylabelNormal
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, '' as AoiPartName, mupolygonkey 
+				from sdm.dbo.mupolygon with(index(pk_mupolygon))
+				where mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData IsNotAoi NOT useSpatialFilter IsPolylabel... n/a
+				select 
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, mupolygonkey 
+				from sdm.dbo.mupolygon
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiAdHoc}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData IsAoiAdHoc useSpatialFilter IsPolylabelMultipart
+				select
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, AoiPartName, uniquekey as mupolygonkey
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_AdHocAoi_and_WM_Bbox ({AoiID}, {spatialFilter})
+				) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData IsAoiAdHoc useSpatialFilter IsPolylabelNormal
+				select
+					areasymbol, spatialversion, MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym, MapUnitKey as mukey, 
+					AreaAcres as muareaacres, AoiSoilMapUnitPolygonProj as mupolygonproj, 
+					mupolygonkey 
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon with(nolock)
+				where AoiID = {AoiID}
+				and mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData IsAoiAdHoc NOT useSpatialFilter IsPolylabel... n/a
+				select
+					areasymbol, spatialversion, MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym, MapUnitKey as mukey, 
+					AreaAcres as muareaacres, AoiSoilMapUnitPolygonProj as mupolygonproj, 
+					mupolygonkey 
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon with(nolock)
+				where AoiID = {AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiSsaBased}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData, SSA Aoi, spatial filter, polylabel=multipart
+				SELECT 
+					mupoly.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, uniquekey as [mupolygonkey]
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_SSAAoi_and_WM_Bbox ({AoiID}, {spatialFilter}) MUPOLY
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData, SSA Aoi, spatial filter, polylabel=normal
+				SELECT 
+					mupoly.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, mupolygonkey
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				dbo.mupolygon mupoly
+				where AOI.areasymbol = mupoly.areasymbol 
+				and AOI.aoiid={AoiID}
+				and mupoly.mupolygonproj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData, SSA Aoi, no spatial filter, polylabel na
+				SELECT
+					mupoly.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, mupolygonkey
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				dbo.mupolygon mupoly
+				where AOI.areasymbol = mupoly.areasymbol 
+				and AOI.aoiid={AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiMukeyListBased}
+		{~? {useSpatialFilter}
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData IsAoiMukeyListBased useSpatialFilter IsPolylabelMultipart
+				select 
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, AoiPartName, uniquekey as mupolygonkey 
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_MukeylistAoi_and_WM_Bbox ({AoiID}, {spatialFilter})
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData IsAoiMukeyListBased useSpatialFilter IsPolylabelNormal
+				select 
+					MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, mupolygonkey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				and mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygonproj from (
+				-- case mapunitpoly UseProjectedData IsAoiMukeyListBased NOT useSpatialFilter IsPolylabel... n/a
+				select 
+					MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, mupolygonkey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}		
+}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  {~? {~! {IsPolylabelNone} }
+    labelitem musym
+  }
+  opacity 100
+  class
+    style
+      WIDTH 0.75
+      Outlinecolor '#FF8000'
+    end # of style
+
+	{~? {~! {IsPolylabelNone} }
+		label
+		  Color '#ff8000'
+		  Outlinecolor '#000000'
+		  Outlinewidth 1
+		  Font 'arial-bold'
+		  Position auto
+		  type truetype
+		  PRIORITY 9
+		  size 7
+		  FORCE    False
+		  PARTIALS False
+		end  #end of label
+		LEADER
+		  GRIDSTEP 5
+		  MAXDISTANCE 30
+		  STYLE
+			COLOR '#000000'
+			WIDTH 1
+		  END
+		END # end of leader
+	}
+
+	#TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitpoly_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitpoly_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitpoly_footer.html'
+
+END # Layer mapunitpoly
+
+
+# Mapunit Polygons without Geometry for MUKEY listing
+LAYER  
+  NAME mapunitpolynogeometry
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE POLYGON
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Polygon Without Geometry'
+	'ows_abstract'          'Map unit polygons delineating soil types. No geometry shapes in result.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,polygons'
+	'ows_extent'            '{ows_extent}'
+	'gml_include_items'     'MUKEY,AREASYMBOL'
+	'gml_featureid'         'MUKEY'
+	'ows_enable_request'    '* !DescribeFeatureType !DescribeLayer !GetCapabilities'
+  END	 # metadata
+ 
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "mupolygongeo from (
+			{~? {IsNotAoi}
+				-- case mapunitpolynogeometry UseGeographicData IsNotAoi
+				select 
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, '' as AoiPartName, mupolygonkey 
+				from sdm.dbo.mupolygon
+				{~? {useSpatialFilter} 
+					with(index(pk_mupolygon))
+					where mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				-- case mapunitpolynogeometry UseGeographicData IsAoiAdHoc
+				select
+					areasymbol, spatialversion,
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym, 
+					MapUnitKey as mukey, 
+					AreaAcres as muareaacres, 
+					AoiSoilMapUnitPolygonGeo as mupolygongeo, 
+					mupolygonkey 
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiSsaBased}
+				-- case mapunitpolynogeometry UseGeographicData IsAoiSsaBased
+				select 
+					AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, mupolygonkey 
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.mupolygon MUP {~? {useSpatialFilter} with(index(SI_mupolygon_24876)) }
+				where AOI.areasymbol = MUP.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUP.mupolygongeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				-- case mapunitpolynogeometry UseGeographicData IsAoiMukeyListBased
+				select 
+					MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygongeo, mupolygonkey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}	
+		) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "mupolygonproj from (
+			{~? {IsNotAoi}
+				-- case mapunitpolynogeometry UseProjectedData IsNotAoi
+				select 
+					areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, mupolygonkey 
+				from sdm.dbo.mupolygon
+				{~? {useSpatialFilter} 
+					with(index(pk_mupolygon))
+					where mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				-- case mapunitpolynogeometry UseProjectedData IsAoiAdHoc
+				select 
+					areasymbol, spatialversion,
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym, 
+					MapUnitKey as mukey, 
+					AreaAcres as muareaacres, 
+					AoiSoilMapUnitPolygonProj as mupolygonproj, 
+					mupolygonkey 
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon  with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+			{~? {IsAoiSsaBased}
+				-- case mapunitpolynogeometry UseProjectedData IsAoiSsaBased
+				select 
+					AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, mupolygonkey 
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.mupolygon MUP {~? {useSpatialFilter} with(index(SI_mupolygon_24877)) }
+				where AOI.areasymbol = MUP.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUP.mupolygonproj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				-- case mapunitpolynogeometry UseProjectedData IsAoiMukeyListBased
+				select 
+					MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, 
+					muareaacres, mupolygonproj, mupolygonkey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+		) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  labelitem musym
+  opacity 100
+  class
+    style
+      WIDTH 0.75
+      Outlinecolor '#FF8000'
+    end # of style
+    label
+      Color '#ff8000'
+      Outlinecolor '#000000'
+      Outlinewidth 1
+      Font 'arial-bold'
+      Position auto
+      type truetype
+      PRIORITY 9
+      size 7
+      FORCE    False
+      PARTIALS False
+    end  #end of label
+    LEADER
+      GRIDSTEP 5
+      MAXDISTANCE 30
+      STYLE
+	    COLOR '#000000'
+		WIDTH 1
+      END
+    END # end of leader
+	#TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitpolynogeometry_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitpolynogeometry_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitpolynogeometry_footer.html'
+
+END # Layer mapunitpolynogeometry
+
+# Mapunit Lines
+LAYER  
+  NAME mapunitline
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE LINE
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Line'
+	'ows_abstract'          'Map unit lines representing soil features.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,lines'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'MUKEY'
+	'ows_enable_request'    '*'
+	'gml_geometries'        'multiLine'
+	'gml_multiLine_type'    'multiline'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	# metadata
+  
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "mulinegeo from (
+			{~? {IsNotAoi}
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulinegeo, mulinekey 
+				from sdm.dbo.muline
+				{~? {useSpatialFilter} 
+					with(index(pk_muline))
+					where mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select
+					areasymbol, spatialversion, 
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym, 
+					MapUnitKey as mukey, 
+					AreaAcres as muareaacres, 
+					AoiSoilMapUnitLineGeo as mulinegeo, 
+					mulinekey 
+				from bafsdacache.dbo.AoiSoilMapUnitline  with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWgs84({spatialFilter}))	
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulinegeo, mulinekey 
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.muline MUL {~? {useSpatialFilter} with(index(SI_muline_24870)) }
+				where AOI.areasymbol = MUL.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUL.mulinegeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select MUL.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulinegeo, mulinekey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.muline MUL 
+				where AOIM.MapUnitKey = MUL.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}
+			}	
+		) as subqry using unique mulinekey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "mulineproj from (
+			{~? {IsNotAoi}
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulineproj, mulinekey 
+				from sdm.dbo.muline
+				{~? {useSpatialFilter} 
+					with(index(pk_muline))
+					where mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select
+					areasymbol, spatialversion, 
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym,
+					MapUnitKey as mukey, 
+					AreaAcres as muareaacres, 
+					AoiSoilMapUnitLineProj as mulineproj, 
+					mulinekey 
+				from bafsdacache.dbo.AoiSoilMapUnitline  with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWM({spatialFilter}))	
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulineproj, mulinekey 
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.muline MUL {~? {useSpatialFilter} with(index(SI_muline_24871)) }
+				where AOI.areasymbol = MUL.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUL.mulineproj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select MUL.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulineproj, mulinekey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.muline MUL 
+				where AOIM.MapUnitKey = MUL.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))					
+				}
+			}
+		) as subqry using unique mulinekey using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem musym
+  OPACITY 100
+  CLASS
+    STYLE
+      WIDTH 2
+      COLOR '#FF8000'
+    END
+    STYLE #black dashed line
+      WIDTH 2
+      COLOR '#000000'
+      PATTERN 1 8 END
+    END
+    label
+      Color '#ff8000'
+      Font 'arial-bold'
+      Size 7
+      OutlineColor '#000000'
+      OutlineWidth 1
+      Position auto
+      type truetype
+      FORCE    False
+      PARTIALS False
+      PRIORITY 9
+      # the line-following label details, all experimental
+      BUFFER 14       # nominal 1/5 inch separation between labels
+      REPEATDISTANCE 280  # nominal 4 inch line distance
+      ANGLE FOLLOW
+      MAXOVERLAPANGLE 22.5
+      MINFEATURESIZE auto
+    end  #end of label   
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  END # end of CLASS
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitline_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitline_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitline_footer.html'
+END # Layer mapunitline
+
+# Mapunit Lines without Geometry for MUKEY listing
+LAYER  
+  NAME mapunitlinenogeometry
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE LINE
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Line Without Geometry'
+	'ows_abstract'          'Map unit lines delineating soil types. No geometry shapes in result.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,lines'
+	'ows_extent'            '{ows_extent}'
+	'gml_include_items'     'MUKEY,AREASYMBOL'
+	'gml_featureid'         'MUKEY'
+	'ows_enable_request'    '* !DescribeFeatureType !DescribeLayer !GetCapabilities'
+  END	# metadata
+ 
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "mulinegeo from (
+			{~? {IsNotAoi}
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulinegeo, mulinekey 
+				from sdm.dbo.muline
+				{~? {useSpatialFilter} 
+					with(index(pk_muline))
+					where mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select
+					areasymbol, spatialversion, 
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym, 
+					MapUnitKey as mukey, 
+					AreaAcres as muareaacres, 
+					AoiSoilMapUnitLineGeo as mulinegeo, 
+					mulinekey 
+				from bafsdacache.dbo.AoiSoilMapUnitline  with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWgs84({spatialFilter}))	
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulinegeo, mulinekey 
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.muline MUL {~? {useSpatialFilter} with(index(SI_muline_24870)) }
+				where AOI.areasymbol = MUL.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUL.mulinegeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select MUL.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulinegeo, mulinekey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.muline MUL 
+				where AOIM.MapUnitKey = MUL.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}
+			}	
+		) as subqry using unique mulinekey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "mulineproj from (
+			{~? {IsNotAoi}
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulineproj, mulinekey 
+				from sdm.dbo.muline
+				{~? {useSpatialFilter} 
+					with(index(pk_muline))
+					where mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select
+					areasymbol, spatialversion, 
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym,
+					MapUnitKey as mukey, 
+					AreaAcres as muareaacres, 
+					AoiSoilMapUnitLineProj as mulineproj, 
+					mulinekey 
+				from bafsdacache.dbo.AoiSoilMapUnitline  with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWM({spatialFilter}))	
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulineproj, mulinekey 
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.muline MUL {~? {useSpatialFilter} with(index(SI_muline_24871)) }
+				where AOI.areasymbol = MUL.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUL.mulineproj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select MUL.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mulineproj, mulinekey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.muline MUL 
+				where AOIM.MapUnitKey = MUL.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))					
+				}
+			}
+		) as subqry using unique mulinekey using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem musym
+  OPACITY 100
+  CLASS
+    STYLE
+      WIDTH 2
+      COLOR '#FF8000'
+    END
+    STYLE #black dashed line
+      WIDTH 2
+      COLOR '#000000'
+      PATTERN 1 8 END
+    END
+    label
+      Color '#ff8000'
+      Font 'arial-bold'
+      Size 7
+      OutlineColor '#000000'
+      OutlineWidth 1
+      Position auto
+      type truetype
+      FORCE    False
+      PARTIALS False
+      PRIORITY 9
+      # the line-following label details, all experimental
+      BUFFER 14       # nominal 1/5 inch separation between labels
+      REPEATDISTANCE 280  # nominal 4 inch line distance
+      ANGLE FOLLOW
+      MAXOVERLAPANGLE 22.5
+      MINFEATURESIZE auto
+    end  #end of label   
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  END # end of CLASS
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitlinenogeometry_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitlinenogeometry_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitlinenogeometry_footer.html'
+
+END # Layer mapunitlinenogeometry
+
+# Mapunit Points
+LAYER  
+  NAME mapunitpoint
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE POINT
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Point'
+	'ows_abstract'          'Map unit points representing soil features.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,points'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'MUKEY'
+	'ows_enable_request'    '*'
+	'gml_geometries'        'multiPoint'
+	'gml_multiPoint_type'   'multipoint'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	 # metadata
+  
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "mupointgeo from (
+			{~? {IsNotAoi}
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointgeo, mupointkey 
+				from sdm.dbo.mupoint
+				{~? {useSpatialFilter} 
+					with(index(pk_mupoint))
+					where mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select
+					areasymbol, spatialversion,
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym,
+					MapUnitKey as mukey,
+					AreaAcres as muareaacres, 
+					AoiSoilMapunitPointGeo as mupointgeo,
+					AoiSoilMapUnitPointID as mupointkey
+				from bafsdacache.dbo.AoiSoilMapUnitPoint  with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 				
+					and mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointgeo, mupointkey 
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.mupoint MUP {~? {useSpatialFilter} with(index(SI_mupoint_24873)) }
+				where AOI.areasymbol = MUP.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUP.mupointgeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointgeo, mupointkey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupoint MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}	
+		) as subqry using unique mupointkey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "mupointproj from (
+			{~? {IsNotAoi}
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointproj, mupointkey 
+				from sdm.dbo.mupoint
+				{~? {useSpatialFilter} 
+					with(index(pk_mupoint))
+					where mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select
+					areasymbol, spatialversion,
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym,
+					MapUnitKey as mukey,
+					AreaAcres as muareaacres, 
+					AoiSoilMapunitPointProj as mupointproj,
+					AoiSoilMapUnitPointID as mupointkey
+				from bafsdacache.dbo.AoiSoilMapUnitPoint  with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointproj, mupointkey
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.mupoint MUP {~? {useSpatialFilter} with(index(SI_mupoint_24874)) }
+				where AOI.areasymbol = MUP.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUP.mupointproj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointproj, mupointkey
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+				sdm.dbo.mupoint MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+		) as subqry using unique mupointkey using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem musym
+  OPACITY 100
+  CLASS
+    style
+      color '#FF8000'
+      OutlineColor '#000000'
+      OutlineWidth 1
+      size 6
+      symbol 'map unit point'
+    end
+    label
+      Color '#ff8000'
+      Font 'arial-bold'
+      Size 7
+      OutlineColor '#000000'
+      OutlineWidth 1
+      Position uc
+      type truetype
+      FORCE    False
+      PARTIALS False
+      PRIORITY 9
+      OFFSET 0 2
+    end  #end of label
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  #end of class
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitpoint_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitpoint_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitpoint_footer.html'
+
+END # Layer mapunitpoint
+
+# Mapunit Points without Geometry for MUKEY listing
+LAYER  
+  NAME mapunitpointnogeometry
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE POINT
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Point Without Geometry'
+	'ows_abstract'          'Map unit points delineating soil types. No geometry shapes in result.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,points'
+	'ows_extent'            '{ows_extent}'
+	'gml_include_items'     'MUKEY,AREASYMBOL'
+	'gml_featureid'         'MUKEY'
+	'ows_enable_request'    '* !DescribeFeatureType !DescribeLayer !GetCapabilities'
+  END	 # metadata
+ 
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "mupointgeo from (
+			{~? {IsNotAoi}
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointgeo, mupointkey 
+				from sdm.dbo.mupoint
+				{~? {useSpatialFilter} 
+					with(index(pk_mupoint))
+					where mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select
+					areasymbol, spatialversion,
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym,
+					MapUnitKey as mukey,
+					AreaAcres as muareaacres, 
+					AoiSoilMapunitPointGeo as mupointgeo,
+					AoiSoilMapUnitPointID as mupointkey
+				from bafsdacache.dbo.AoiSoilMapUnitPoint  with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 				
+					and MapUnitKey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointgeo, mupointkey 
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.mupoint MUP {~? {useSpatialFilter} with(index(SI_mupoint_24873)) }
+				where AOI.areasymbol = MUP.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUP.mupointgeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointgeo, mupointkey 
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupoint MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and MapUnitKey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}	
+		) as subqry using unique mupointkey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "mupointproj from (
+			{~? {IsNotAoi}
+				select areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointproj, mupointkey 
+				from sdm.dbo.mupoint
+				{~? {useSpatialFilter} 
+					with(index(pk_mupoint))
+					where mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select
+					areasymbol, spatialversion,
+					MapUnitSymbol as musym,
+					NationalMapUnitSymbol as nationalmusym,
+					MapUnitKey as mukey,
+					AreaAcres as muareaacres, 
+					AoiSoilMapunitPointProj as mupointproj,
+					AoiSoilMapUnitPointID as mupointkey
+				from bafsdacache.dbo.AoiSoilMapUnitPoint  with(nolock)
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and MapUnitKey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select AOI.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointproj, mupointkey
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.mupoint MUP 
+				{~? {useSpatialFilter} 
+					with(index(SI_mupoint_24874))
+				}
+				where AOI.areasymbol = MUP.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUP.mupointproj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select MUP.areasymbol, spatialversion, musym, nationalmusym, mukey, muareaacres, mupointproj, mupointkey
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+				sdm.dbo.mupoint MUP 
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and MapUnitKey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+		) as subqry using unique mupointkey using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  OPACITY 100
+  CLASS
+    style
+      color '#FF8000'
+      OutlineColor '#000000'
+      OutlineWidth 1
+      size 6
+      symbol 'map unit point'
+    end
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  #end of class
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitpointnogeometry_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitpointnogeometry_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitpointnogeometry_footer.html'
+ END # Layer mapunitpointnogeometry
+
+
+# MapunitPolyExtended
+LAYER  
+  NAME mapunitpolyextended
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE POLYGON
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Polygon With Extended Attributes'
+	'ows_abstract'          'Map unit polygons delineating soil types with additional attributes.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,mapunit polygons,mapunit aggregated attributes'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'MUKEY'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPolygon'
+	'gml_multiPolygon_type' 'multipolygon'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	 # metadata
+  
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+{~? {UseGeographicData}
+		UNITS DD
+	{~? {IsNotAoi}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, not aoi, spatial filter, polylabel=multipart
+				select 
+					mupoly.areasymbol, mupoly.musym, mupoly.nationalmusym, 
+					mupoly.mukey, mupoly.spatialversion, 
+					
+					ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+					ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+					ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+					ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+					ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+					ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+					ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+					ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+					ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+					ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+					mupoly.mupolygongeo, '' as AoiPartName, mupoly.uniquekey
+				from SDA_Get_Simple_Mupolygons_clipped_to_WGS84_Bbox ({spatialFilter}) mupoly
+				JOIN dbo.muaggatt ma ON mupoly.mukey = ma.mukey
+				
+			) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygongeo from (
+				-- case  mapunitpolyextended geographic, not aoi, spatial filter, polylabel=nomal
+				select 
+					mupoly.areasymbol, mupoly.musym, mupoly.nationalmusym, 
+					mupoly.mukey, mupoly.spatialversion, 
+					
+					ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+					ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+					ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+					ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+					ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+					ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+					ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+					ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+					ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+					ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+					mupoly.mupolygongeo, '' as AoiPartName, mupoly.mupolygonkey 
+					
+				from sdm.dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma ON mupoly.mukey = ma.mukey
+				where mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, not aoi, no spatial filter, polylabel n/a
+				select 
+					mupoly.areasymbol, mupoly.musym, mupoly.nationalmusym, 
+					mupoly.mukey, mupoly.spatialversion, 
+					
+					ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+					ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+					ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+					ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+					ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+					ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+					ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+					ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+					ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+					ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+					mupoly.mupolygongeo, mupoly.mupolygonkey 				
+				from sdm.dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma ON mupoly.mukey = ma.mukey
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiAdHoc}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, Ad Hoc Aoi, spatial filter, polylabel=multipart
+				select 
+					mupoly.areasymbol, mupoly.musym, mupoly.nationalmusym, 
+					mupoly.mukey, mupoly.spatialversion, 
+					
+					ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+					ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+					ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+					ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+					ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+					ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+					ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+					ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+					ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+					ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+					mupoly.mupolygongeo, AoiPartName, mupoly.uniquekey as [mupolygonkey]
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_AdHocAoi_and_WGS84_Bbox ({AoiID}, {spatialFilter}) mupoly
+				JOIN dbo.muaggatt ma ON mupoly.mukey = ma.mukey			
+				) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, Ad Hoc Aoi, spatial filter, polylabel=normal
+				select 
+				  aoipoly.areasymbol, 
+				  aoipoly.mapunitsymbol as musym, aoipoly.nationalmapunitsymbol as nationalmusym,
+				  aoipoly.mapunitkey as mukey, aoipoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  aoipoly.AoiSoilMapunitPolygonGeo as mupolygongeo, mupolygonkey	
+
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon aoipoly with(nolock)
+				JOIN dbo.muaggatt ma
+				ON aoipoly.mapunitkey = ma.mukey
+				where AoiID = {AoiID}
+				and mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))				
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}	
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, Ad Hoc Aoi, no spatial filter, polylabel n/a
+				select 
+				  aoipoly.areasymbol, 
+				  aoipoly.mapunitsymbol as musym, aoipoly.nationalmapunitsymbol as nationalmusym,
+				  aoipoly.mapunitkey as mukey, aoipoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  aoipoly.AoiSoilMapunitPolygonGeo as mupolygongeo, mupolygonkey	
+
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon aoipoly with(nolock) 
+				JOIN dbo.muaggatt ma
+				ON aoipoly.mapunitkey = ma.mukey
+				where AoiID = {AoiID}		
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiSsaBased}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, SSA Aoi, spatial filter, polylabel=multipart
+				SELECT 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygongeo, AoiPartName, mupoly.uniquekey as [mupolygonkey]
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_SSAAoi_and_WGS84_Bbox ({AoiID}, {spatialFilter}) MUPOLY
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, SSA Aoi, spatial filter, polylabel=normal
+				SELECT 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygongeo, mupolygonkey				
+
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+				where AOI.areasymbol = mupoly.areasymbol 
+				and AOI.aoiid={AoiID}
+				and mupoly.mupolygongeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, SSA Aoi, no spatial filter, polylabel na
+				SELECT 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygongeo, mupolygonkey		
+
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+				where AOI.areasymbol = mupoly.areasymbol 
+				and AOI.aoiid={AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiMukeyListBased}
+		{~? {useSpatialFilter}
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, Mukey List Aoi, spatial filter, polylabel=multipart
+				select 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygongeo, AoiPartName, mupoly.uniquekey [mupolygonkey]
+
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_MukeylistAoi_and_WGS84_Bbox ({AoiID}, {spatialFilter}) mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, Mukey List Aoi, spatial filter, polylabel=normal
+				select 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygongeo, mupoly.mupolygonkey
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+				where AOIM.MapUnitKey = mupoly.mukey 
+				and AOIM.aoiid={AoiID}
+				and mupolygonkey in (
+					select mupolygonkey 
+					from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygongeo from (
+				-- case mapunitpolyextended geographic, Mukey List Aoi, no spatial filter, polylabel n/a
+				select 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygongeo, mupoly.mupolygonkey
+
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey				
+				where AOIM.MapUnitKey = mupoly.mukey
+				and AOIM.aoiid={AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}		
+}
+
+{~? {UseProjectedData}
+		UNITS METERS
+	{~? {IsNotAoi}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, not aoi, spatial filter, polylabel=multipart
+				select 
+					mupoly.areasymbol, mupoly.musym, mupoly.nationalmusym, 
+					mupoly.mukey, mupoly.spatialversion, 
+					
+					ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+					ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+					ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+					ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+					ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+					ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+					ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+					ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+					ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+					ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+					mupoly.mupolygonproj, '' as AoiPartName, mupoly.uniquekey				
+				from SDA_Get_Simple_Mupolygons_clipped_to_WM_Bbox ({spatialFilter}) mupoly
+				JOIN dbo.muaggatt ma ON mupoly.mukey = ma.mukey
+				
+			) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygonproj from (
+				-- case  mapunitpolyextended UseProjectedData, not aoi, spatial filter, polylabel=nomal
+				select 
+					mupoly.areasymbol, mupoly.musym, mupoly.nationalmusym, 
+					mupoly.mukey, mupoly.spatialversion, 
+					
+					ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+					ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+					ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+					ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+					ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+					ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+					ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+					ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+					ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+					ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+					mupoly.mupolygonproj, '' as AoiPartName, mupoly.mupolygonkey 
+					
+				from sdm.dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma ON mupoly.mukey = ma.mukey
+				where mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, not aoi, no spatial filter, polylabel n/a
+				select 
+					mupoly.areasymbol, mupoly.musym, mupoly.nationalmusym, 
+					mupoly.mukey, mupoly.spatialversion, 
+					
+					ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+					ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+					ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+					ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+					ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+					ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+					ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+					ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+					ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+					ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+					mupoly.mupolygonproj, mupoly.mupolygonkey 				
+				from sdm.dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma ON mupoly.mukey = ma.mukey
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiAdHoc}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, Ad Hoc Aoi, spatial filter, polylabel=multipart
+				select 
+					mupoly.areasymbol, mupoly.musym, mupoly.nationalmusym, 
+					mupoly.mukey, mupoly.spatialversion, 
+					
+					ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+					ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+					ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+					ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+					ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+					ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+					ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+					ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+					ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+					ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+					mupoly.mupolygonproj, AoiPartName, mupoly.uniquekey as [mupolygonkey]
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_AdHocAoi_and_WM_Bbox ({AoiID}, {spatialFilter}) mupoly
+				JOIN dbo.muaggatt ma ON mupoly.mukey = ma.mukey			
+				) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, Ad Hoc Aoi, spatial filter, polylabel=normal
+				select 
+				  aoipoly.areasymbol, 
+				  aoipoly.mapunitsymbol as musym, aoipoly.nationalmapunitsymbol as nationalmusym,
+				  aoipoly.mapunitkey as mukey, aoipoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  aoipoly.AoiSoilMapunitPolygonProj as mupolygonproj, mupolygonkey	
+
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon aoipoly with(nolock)
+				JOIN dbo.muaggatt ma
+				ON aoipoly.mapunitkey = ma.mukey
+				where AoiID = {AoiID}
+				and mupolygonkey in (
+					select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))				
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}	
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, Ad Hoc Aoi, no spatial filter, polylabel n/a
+				select 
+				  aoipoly.areasymbol, 
+				  aoipoly.mapunitsymbol as musym, aoipoly.nationalmapunitsymbol as nationalmusym,
+				  aoipoly.mapunitkey as mukey, aoipoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  aoipoly.AoiSoilMapunitPolygonProj as mupolygonproj, mupolygonkey	
+
+				from bafsdacache.dbo.AoiSoilMapUnitPolygon aoipoly with(nolock) 
+				JOIN dbo.muaggatt ma
+				ON aoipoly.mapunitkey = ma.mukey
+				where AoiID = {AoiID}		
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiSsaBased}
+		{~? {useSpatialFilter} 
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, SSA Aoi, spatial filter, polylabel=multipart
+				SELECT 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygonproj, AoiPartName, mupoly.uniquekey as [mupolygonkey]
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_SSAAoi_and_WM_Bbox ({AoiID}, {spatialFilter}) MUPOLY
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, SSA Aoi, spatial filter, polylabel=normal
+				SELECT 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygonproj, mupolygonkey				
+
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+				where AOI.areasymbol = mupoly.areasymbol 
+				and AOI.aoiid={AoiID}
+				and mupoly.mupolygonproj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, SSA Aoi, no spatial filter, polylabel na
+				SELECT 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygonproj, mupolygonkey		
+
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+				where AOI.areasymbol = mupoly.areasymbol 
+				and AOI.aoiid={AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiMukeyListBased}
+		{~? {useSpatialFilter}
+		  {~? {IsPolylabelMultipart}
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, Mukey List Aoi, spatial filter, polylabel=multipart
+				select 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygonproj, AoiPartName, mupoly.uniquekey [mupolygonkey]
+
+				from dbo.SDA_Get_Simple_Mupolygons_clipped_to_MukeylistAoi_and_WM_Bbox ({AoiID}, {spatialFilter}) mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		  {~? {IsPolylabelNormal}
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, Mukey List Aoi, spatial filter, polylabel=normal
+				select 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygonproj, mupoly.mupolygonkey
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey
+				where AOIM.MapUnitKey = mupoly.mukey 
+				and AOIM.aoiid={AoiID}
+				and mupolygonkey in (
+					select mupolygonkey 
+					from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		  }
+		}
+		{~? {~! {useSpatialFilter} }
+			DATA "mupolygonproj from (
+				-- case mapunitpolyextended UseProjectedData, Mukey List Aoi, no spatial filter, polylabel n/a
+				select 
+				  mupoly.areasymbol, 
+				  mupoly.musym, mupoly.nationalmusym,
+				  mupoly.mukey, mupoly.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  mupoly.mupolygonproj, mupoly.mupolygonkey
+
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM  with(nolock),
+				sdm.dbo.mupolygon mupoly
+				JOIN dbo.muaggatt ma
+				ON mupoly.mukey = ma.mukey				
+				where AOIM.MapUnitKey = mupoly.mukey
+				and AOIM.aoiid={AoiID}
+			) as subqry using unique mupolygonkey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}		
+}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  {~? {~! {IsPolylabelNone} }
+    labelitem musym
+  }
+  opacity 100
+  class
+    style
+      WIDTH 0.75
+      Outlinecolor '#FF8000'
+    end # of style
+
+	{~? {~! {IsPolylabelNone} }
+    label
+      Color '#ff8000'
+      Outlinecolor '#000000'
+      Outlinewidth 1
+      Font 'arial-bold'
+      Position auto
+      type truetype
+      PRIORITY 9
+      size 7
+      FORCE    False
+      PARTIALS False
+    end  #end of label
+    LEADER
+      GRIDSTEP 5
+      MAXDISTANCE 30
+      STYLE
+	    COLOR '#000000'
+		WIDTH 1
+      END
+    END # end of leader
+	}
+
+	#TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitpolyextended_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitpolyextended_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitpolyextended_footer.html'
+
+END # of layer MapunitPolyExtended
+
+# MapunitLineExtended
+LAYER  
+  NAME mapunitlineextended
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE LINE
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Line With Extended Attributes'
+	'ows_abstract'          'Map unit lines delineating soil types with additional attributes.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,mapunit lines,mapunit aggregated attributes'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'MUKEY'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiLine'
+	'gml_multiLine_type'    'multiline'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	# metadata
+  
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "mulinegeo from (
+			{~? {IsNotAoi}
+				SELECT 
+				  MUL.areasymbol, MUL.musym, MUL.nationalmusym,
+				  MUL.mukey, MUL.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUL.mulinegeo, mulinekey
+				  
+				FROM sdm.dbo.muline MUL {~? {useSpatialFilter} with(index(pk_muline)) }
+				JOIN dbo.muaggatt ma
+				ON MUL.mukey = ma.mukey
+				{~? {useSpatialFilter}
+					where mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}			
+			}
+			{~? {IsAoiAdHoc}
+				SELECT 
+				  aoiline.areasymbol, 
+				  aoiline.mapunitsymbol as musym, aoiline.nationalmapunitsymbol as nationalmusym,
+				  aoiline.mapunitkey as mukey, aoiline.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  aoiline.AoiSoilMapunitLineGeo as mulinegeo, mulinekey				
+				
+				from bafsdacache.dbo.AoiSoilMapUnitLine aoiline with(nolock)
+				JOIN dbo.muaggatt ma
+				ON aoiline.mapunitkey = ma.mukey
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWgs84({spatialFilter}))	
+				}
+			}
+			{~? {IsAoiSsaBased}
+				SELECT 
+				  MUL.areasymbol, 
+				  MUL.musym, MUL.nationalmusym,
+				  MUL.mukey, MUL.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUL.mulinegeo, mulinekey				
+
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				sdm.dbo.muline MUL {~? {useSpatialFilter} with(index(SI_muline_24870)) }				
+				JOIN dbo.muaggatt ma
+				ON MUL.mukey = ma.mukey
+				where AOI.areasymbol = MUL.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUL.mulinegeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				}			
+			}
+			{~? {IsAoiMukeyListBased}
+				SELECT 
+				  MUL.areasymbol, 
+				  MUL.musym, MUL.nationalmusym,
+				  MUL.mukey, MUL.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUL.mulinegeo, mulinekey
+
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+				sdm.dbo.muline MUL				
+				JOIN dbo.muaggatt ma
+				ON MUL.mukey = ma.mukey
+				where AOIM.MapUnitKey = MUL.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}
+			}	
+		) as subqry using unique mulinekey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "mulineproj from (
+			{~? {IsNotAoi}
+				SELECT 
+				  MUL.areasymbol, MUL.musym, MUL.nationalmusym,
+				  MUL.mukey, MUL.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUL.mulineproj, mulinekey
+				  
+				FROM dbo.muline MUL {~? {useSpatialFilter} with(index(pk_muline)) }
+				JOIN dbo.muaggatt ma
+				ON MUL.mukey = ma.mukey
+				{~? {useSpatialFilter} 
+					where mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}			
+			}
+			{~? {IsAoiAdHoc}
+				SELECT 
+				  aoiline.areasymbol, 
+				  aoiline.mapunitsymbol as musym, aoiline.nationalmapunitsymbol as nationalmusym,
+				  aoiline.mapunitkey as mukey, aoiline.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  aoiline.AoiSoilMapunitLineProj as mulineproj, mulinekey				
+				
+				from bafsdacache.dbo.AoiSoilMapUnitLine aoiline with(nolock)
+				JOIN dbo.muaggatt ma
+				ON aoiline.mapunitkey = ma.mukey
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mulinekey_from_intersection_with_WktWM({spatialFilter}))	
+				}		
+			}
+			{~? {IsAoiSsaBased}
+				SELECT 
+				  MUL.areasymbol, 
+				  MUL.musym, MUL.nationalmusym,
+				  MUL.mukey, MUL.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUL.mulineproj, mulinekey				
+
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				sdm.dbo.muline MUL {~? {useSpatialFilter} with(index(SI_muline_24871)) }				
+				JOIN dbo.muaggatt ma
+				ON MUL.mukey = ma.mukey
+				where AOI.areasymbol = MUL.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUL.mulineproj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				SELECT 
+				  MUL.areasymbol, 
+				  MUL.musym, MUL.nationalmusym,
+				  MUL.mukey, MUL.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUL.mulineproj, mulinekey
+
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+				sdm.dbo.muline MUL				
+				JOIN dbo.muaggatt ma
+				ON MUL.mukey = ma.mukey
+				where AOIM.MapUnitKey = MUL.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mulinekey in (
+						select mulinekey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))					
+				}
+			}
+		) as subqry using unique mulinekey using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem musym
+  OPACITY 100
+  CLASS
+    STYLE
+      WIDTH 2
+      COLOR '#FF8000'
+    END
+    STYLE #black dashed line
+      WIDTH 2
+      COLOR '#000000'
+      PATTERN 1 8 END
+    END
+    label
+      Color '#ff8000'
+      Font 'arial-bold'
+      Size 7
+      OutlineColor '#000000'
+      OutlineWidth 1
+      Position auto
+      type truetype
+      FORCE    False
+      PARTIALS False
+      PRIORITY 9
+      # the line-following label details, all experimental
+      BUFFER 14       # nominal 1/5 inch separation between labels
+      REPEATDISTANCE 280  # nominal 4 inch line distance
+      ANGLE FOLLOW
+      MAXOVERLAPANGLE 22.5
+      MINFEATURESIZE auto
+    end  #end of label   
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  END # end of CLASS
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitlineextended_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitlineextended_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitlineextended_footer.html'
+END # Layer mapunitlineextended
+
+
+# MapunitPointExtended
+LAYER  
+  NAME mapunitpointextended
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE POINT
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Point With Extended Attributes'
+	'ows_abstract'          'Map unit points delineating soil types with additional attributes.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,mapunit points,mapunit aggregated attributes'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'MUKEY'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPoint'
+	'gml_multiPoint_type'   'multipoint'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	 # metadata
+  
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+    
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "mupointgeo from (
+			{~? {IsNotAoi}
+				SELECT 
+				  MUP.areasymbol, MUP.musym, MUP.nationalmusym,
+				  MUP.mukey, MUP.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUP.mupointgeo, mupointkey
+				  
+				FROM sdm.dbo.mupoint MUP {~? {useSpatialFilter} with(index(pk_mupoint)) }
+				JOIN dbo.muaggatt ma
+				ON MUP.mukey = ma.mukey
+				{~? {useSpatialFilter}
+					where mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}							
+			}
+			{~? {IsAoiAdHoc}
+				SELECT 
+				  aoipoint.areasymbol, 
+				  aoipoint.mapunitsymbol as musym, aoipoint.nationalmapunitsymbol as nationalmusym,
+				  aoipoint.mapunitkey as mukey, aoipoint.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  aoipoint.AoiSoilMapunitPointGeo as mupointgeo, mupointkey				
+				
+				from bafsdacache.dbo.AoiSoilMapUnitPoint aoipoint with(nolock)
+				JOIN dbo.muaggatt ma
+				ON aoipoint.mapunitkey = ma.mukey
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWgs84({spatialFilter}))	
+				}
+			}
+			{~? {IsAoiSsaBased}
+				SELECT 
+				  MUP.areasymbol, 
+				  MUP.musym, MUP.nationalmusym,
+				  MUP.mukey, MUP.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUP.mupointgeo, mupointkey				
+
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				sdm.dbo.mupoint MUP {~? {useSpatialFilter} with(index(SI_mupoint_24873)) }
+				JOIN dbo.muaggatt ma
+				ON MUP.mukey = ma.mukey
+				where AOI.areasymbol = MUP.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUP.mupointgeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				SELECT 
+				  MUP.areasymbol, 
+				  MUP.musym, MUP.nationalmusym,
+				  MUP.mukey, MUP.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUP.mupointproj, mupointkey
+
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+				sdm.dbo.mupoint MUP
+				JOIN dbo.muaggatt ma
+				ON MUP.mukey = ma.mukey
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWgs84({spatialFilter}))					
+				}
+			}	
+		) as subqry using unique mupointkey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "mupointproj from (
+			{~? {IsNotAoi}
+				SELECT 
+				  MUP.areasymbol, MUP.musym, MUP.nationalmusym,
+				  MUP.mukey, MUP.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUP.mupointproj, mupointkey
+				  
+				FROM dbo.mupoint MUP {~? {useSpatialFilter} with(index(pk_mupoint)) }
+				JOIN dbo.muaggatt ma
+				ON MUP.mukey = ma.mukey
+				{~? {useSpatialFilter}
+					where mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))					
+				}					
+			}
+			{~? {IsAoiAdHoc}
+				SELECT 
+				  aoipoint.areasymbol, 
+				  aoipoint.mapunitsymbol as musym, aoipoint.nationalmapunitsymbol as nationalmusym,
+				  aoipoint.mapunitkey as mukey, aoipoint.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  aoipoint.AoiSoilMapunitPointProj as mupointproj, mupointkey				
+				
+				from bafsdacache.dbo.AoiSoilMapUnitPoint aoipoint with(nolock)
+				JOIN dbo.muaggatt ma
+				ON aoipoint.mapunitkey = ma.mukey
+				where AoiID = {AoiID}
+				{~? {useSpatialFilter} 
+					and mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))	
+				}						
+			}
+			{~? {IsAoiSsaBased}
+				SELECT 
+				  MUP.areasymbol, 
+				  MUP.musym, MUP.nationalmusym,
+				  MUP.mukey, MUP.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUP.mupointproj, mupointkey				
+
+				FROM bafsdacache.dbo.AOI as AOI with(nolock),
+				sdm.dbo.mupoint MUP {~? {useSpatialFilter} with(index(SI_mupoint_24874)) }
+				JOIN dbo.muaggatt ma
+				ON MUP.mukey = ma.mukey
+				where AOI.areasymbol = MUP.areasymbol 
+				and AOI.aoiid={AoiID}
+				{~? {useSpatialFilter} 
+					and MUP.mupointproj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				}	
+			}
+			{~? {IsAoiMukeyListBased}
+				SELECT 
+				  MUP.areasymbol, 
+				  MUP.musym, MUP.nationalmusym,
+				  MUP.mukey, MUP.spatialversion, 
+				  
+				  ma.muname, ma.mustatus, ma.slopegraddcp, ma.slopegradwta, 
+				  ma.brockdepmin,ma.wtdepannmin, ma.wtdepaprjunmin, 
+				  ma.flodfreqdcd, ma.flodfreqmax,  ma.pondfreqprs, 
+				  ma.aws025wta, ma.aws050wta, ma.aws0100wta, ma.aws0150wta, 
+				  ma.drclassdcd, ma.drclasswettest, ma.hydgrpdcd, ma.iccdcd, 
+				  ma.iccdcdpct, ma.niccdcd, ma.niccdcdpct, ma.engdwobdcd, 
+				  ma.engdwbdcd, ma.engdwbll, ma.engdwbml, ma.engstafdcd, 
+				  ma.engstafll, ma.engstafml, ma.engsldcd, ma.engsldcp, 
+				  ma.englrsdcd, ma.engcmssdcd, ma.engcmssmp, ma.urbrecptdcd, 
+				  ma.urbrecptwta, ma.forpehrtdcp, ma.hydclprs, ma.awmmfpwwta,
+				  
+				  MUP.mupointproj, mupointkey
+
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+				sdm.dbo.mupoint MUP
+				JOIN dbo.muaggatt ma
+				ON MUP.mukey = ma.mukey
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				{~? {useSpatialFilter}
+					and mupointkey in (
+						select mupointkey from SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))					
+				}
+			}
+		) as subqry using unique mupointkey using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem musym
+  OPACITY 100
+  CLASS
+    style
+      color '#FF8000'
+      OutlineColor '#000000'
+      OutlineWidth 1
+      size 6
+      symbol 'map unit point'
+    end
+    label
+      Color '#ff8000'
+      Font 'arial-bold'
+      Size 7
+      OutlineColor '#000000'
+      OutlineWidth 1
+      Position uc
+      type truetype
+      FORCE    False
+      PARTIALS False
+      PRIORITY 9
+      OFFSET 0 2
+    end  #end of label
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  #end of class
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitpointextended_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitpointextended_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitpointextended_footer.html'
+END # Layer mapunitpointextended
+
+
+# Mapunit Polygons Thematic Map
+LAYER  
+  NAME mapunitpolythematic
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE POLYGON
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Polygon Thematic Map'
+	'ows_abstract'          'Map unit polygons delineating a selected soil interpretation.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,mapunit polygons,mapunit interpretation'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'MapUnitKey'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPolygon'
+	'gml_multiPolygon_type' 'multipolygon'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	 # metadata
+  
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+  # Note: The parameter set does not allow a thematicid with the geographic coordinate system.
+# Group: NOT WSS ThematicMapId Geographic 
+
+{~? {~& {~! {IsWssThematic} } {UseGeographicData} }
+	UNITS METERS
+	{~? {IsNotAoi}
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic UseGeographicData IsNotAoi
+					select
+						mup.areasymbol
+						, mup.SpatialVersion
+						, mup.MapUnitSymbol
+						, mup.NationalMapUnitSymbol
+						, mup.MapUnitKey
+						, mup.AreaAcres
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mup.AoiSoilMapUnitPolygonGeo
+						, AP.AoiPartName
+						, cast(mup.MuPolygonKey as varchar(12)) + ':' + cast(AP.AoiPartNum as varchar(12)) [uniquekey]
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitPolygon MUP with(nolock)
+						on MUP.AoiID = TM.AoiId
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUP.MapUnitKey
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiPart AP with(nolock) 
+						on MUP.AoiPartId = AP.AoiPartId
+					where TM.AoiSoilThematicMapID = {InterpresultId}
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {IsAoiAdHoc}
+		{~? {useSpatialFilter}
+			{~? {IsPolylabelMultipart}
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic UseGeographicData IsAoiAdHoc useSpatialFilter  IsPolylabelMultipart
+					select 
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.mupolygongeo [AoiSoilMapUnitPolygonGeo]
+						, muPoly.AoiPartName
+						, mupoly.uniquekey
+					from 
+						dbo.SDA_Get_Simple_Mupolygons_clipped_to_AdHocAoi_and_WGS84_Bbox (
+							(select top 1 aoiid from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+								where AoiSoilThematicMapId = {InterpresultId})
+							 , {spatialFilter}) mupoly
+						left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and mupoly.mukey = MR.mapunitkey
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+			}
+		}
+		{~? {useSpatialFilter}
+			{~? {IsPolylabelNormal}
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic UseGeographicData IsAoiAdHoc useSpatialFilter  IsPolylabelNormal
+					select
+						mup.areasymbol
+						, mup.SpatialVersion
+						, mup.MapUnitSymbol
+						, mup.NationalMapUnitSymbol
+						, mup.MapUnitKey
+						, mup.AreaAcres
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mup.AoiSoilMapUnitPolygonGeo
+						, AP.AoiPartName
+						, cast(mup.MuPolygonKey as varchar(12)) + ':' + cast(AP.AoiPartNum as varchar(12)) [uniquekey]
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitPolygon MUP with(nolock)
+						on MUP.AoiID = TM.AoiId
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUP.MapUnitKey
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiPart AP with(nolock) 
+						on MUP.AoiPartId = AP.AoiPartId
+					where TM.AoiSoilThematicMapID = {InterpresultId}
+					and  mup.AoiSoilMapUnitPolygonGeo.STIntersects(Geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+			}
+		}
+		{~? {~! {useSpatialFilter} }
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic UseGeographicData IsAoiAdHoc NOT useSpatialFilter  IsPolylabelNormal
+					select
+						mup.areasymbol
+						, mup.SpatialVersion
+						, mup.MapUnitSymbol
+						, mup.NationalMapUnitSymbol
+						, mup.MapUnitKey
+						, mup.AreaAcres
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mup.AoiSoilMapUnitPolygonGeo
+						, AP.AoiPartName
+						, cast(mup.MuPolygonKey as varchar(12)) + ':' + cast(AP.AoiPartNum as varchar(12)) [uniquekey]
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitPolygon MUP with(nolock)
+						on MUP.AoiID = TM.AoiId
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUP.MapUnitKey
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiPart AP with(nolock) 
+						on MUP.AoiPartId = AP.AoiPartId
+					where TM.AoiSoilThematicMapID = {InterpresultId}
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+		}		
+	}
+	{~? {IsAoiSsaBased}
+		{~? {useSpatialFilter}
+			{~? {IsPolylabelMultipart}
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic UseGeographicData IsAoiSsaBased useSpatialFilter  IsPolylabelMultipart
+					select 
+					  mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.mupolygongeo [AoiSoilMapUnitPolygonGeo]
+						, AoiPartName
+						, mupoly.uniquekey
+					from 
+					  dbo.SDA_Get_Simple_Mupolygons_clipped_to_SSAAoi_and_WGS84_Bbox (
+							(select top 1 aoiid from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+							 where AoiSoilThematicMapId = {InterpresultId})
+							, {spatialFilter}) mupoly
+					  left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+					  on MR.AoiSoilThematicMapID = {InterpresultId} and mupoly.mukey = MR.mapunitkey
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+			}
+			{~? {IsPolylabelNormal}
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic UseGeographicData IsAoiAdHoc useSpatialFilter  IsPolylabelNormal
+					select
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.mupolygongeo.STIntersection(geometry::STGeomFromText({spatialFilter}, 4326)) [AoiSoilMapUnitPolygonGeo]
+						, mupoly.MuPolygonKey
+					FROM {AoiSoilThematicMapDatabase}.dbo.AOI as AOI with(nolock)
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+					on TM.AoiSoilThematicMapID = {InterpresultId} and TM.AoiID = AOI.AoiId,
+					dbo.mupolygon mupoly with(nolock)
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) 
+					on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUPOLY.mukey
+					where AOI.areasymbol = mupoly.areasymbol
+					and mupoly.mupolygongeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"				
+			}
+		}
+		{~? {~! {useSpatialFilter} }
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic UseGeographicData IsAoiAdHoc NOT useSpatialFilter  IsPolylabelNormal
+					select
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.mupolygongeo.STIntersection(geometry::STGeomFromText({spatialFilter}, 4326)) [AoiSoilMapUnitPolygonGeo]
+						, mupoly.MuPolygonKey
+					FROM {AoiSoilThematicMapDatabase}.dbo.AOI as AOI with(nolock)
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+					on TM.AoiSoilThematicMapID = {InterpresultId} and TM.AoiID = AOI.AoiId,
+					dbo.mupolygon mupoly with(nolock)
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) 
+					on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUPOLY.mukey
+					where AOI.areasymbol = mupoly.areasymbol
+				) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiMukeyListBased}
+		{~? {useSpatialFilter}
+			{~? {IsPolylabelMultipart}
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic useSpatialFilter IsAoiMukeyListBased UseGeographicData IsPolylabelMultipart
+					select 
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.mupolygongeo [AoiSoilMapUnitPolygonGeo]
+						, AoiPartName
+						, mupoly.uniquekey
+					from dbo.SDA_Get_Simple_Mupolygons_clipped_to_MukeylistAoi_and_WGS84_Bbox (
+						(select top 1 aoiid from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+						 where AoiSoilThematicMapId = {InterpresultId})
+						 , {spatialFilter}) mupoly
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = mupoly.mukey
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+			}
+			{~? {IsPolylabelNormal}
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic useSpatialFilter IsAoiMukeyListBased UseGeographicData IsPolylabelNormal
+					select 
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.mupolygongeo [AoiSoilMapUnitPolygonGeo]
+						, mupoly.mupolygonkey
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiMapunit MU with(nolock) 
+						on MU.aoiid = TM.Aoiid
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MU.MapUnitKey
+					join dbo.mupolygon MUPOLY with(nolock) on MUPOLY.mukey = MR.MapUnitKey
+					where TM.AoiSoilThematicMapId = {InterpresultId}
+					and mupoly.mupolygongeo.STIntersects(Geometry::STGeomFromText({spatialFilter}, 4326)) = 1			
+				) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"
+			}
+		}
+		{~? {~! {useSpatialFilter} }
+				DATA "AoiSoilMapUnitPolygonGeo from (
+					-- case mapunitpolythematic NOT IsWssThematic NOT useSpatialFilter IsAoiMukeyListBased UseGeographicData IsPolylabelNormal
+					select 
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.mupolygongeo [AoiSoilMapUnitPolygonGeo]
+						, mupoly.mupolygonkey
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiMapunit MU with(nolock) 
+						on MU.aoiid = TM.Aoiid
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MU.MapUnitKey
+					join dbo.mupolygon MUPOLY with(nolock) on MUPOLY.mukey = MR.MapUnitKey
+					where TM.AoiSoilThematicMapId = {InterpresultId}		
+				) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+}
+
+# Group: NOT WSS ThematicMapId Projected 
+
+{~? {~& {~! {IsWssThematic} } {UseProjectedData} }
+	UNITS METERS
+	{~? {IsNotAoi}
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic UseProjectedData IsNotAoi
+					select
+						mup.areasymbol
+						, mup.SpatialVersion
+						, mup.MapUnitSymbol
+						, mup.NationalMapUnitSymbol
+						, mup.MapUnitKey
+						, mup.AreaAcres
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mup.AoiSoilMapUnitPolygonProj
+						, AP.AoiPartName
+						, cast(mup.MuPolygonKey as varchar(12)) + ':' + cast(AP.AoiPartNum as varchar(12)) [uniquekey]
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitPolygon MUP with(nolock)
+						on MUP.AoiID = TM.AoiId
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUP.MapUnitKey
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiPart AP with(nolock) 
+						on MUP.AoiPartId = AP.AoiPartId
+					where TM.AoiSoilThematicMapID = {InterpresultId}
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {IsAoiAdHoc}
+		{~? {useSpatialFilter}
+			{~? {IsPolylabelMultipart}
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic UseProjectedData IsAoiAdHoc useSpatialFilter  IsPolylabelMultipart
+					select 
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.muPolygonProj [AoiSoilMapUnitPolygonProj]
+						, muPoly.AoiPartName
+						, mupoly.uniquekey
+					from 
+						dbo.SDA_Get_Simple_Mupolygons_clipped_to_AdHocAoi_and_WM_Bbox (
+							(select top 1 aoiid from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+								where AoiSoilThematicMapId = {InterpresultId})
+							 , {spatialFilter}) mupoly
+						left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and mupoly.mukey = MR.mapunitkey
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+			}
+		}
+		{~? {useSpatialFilter}
+			{~? {IsPolylabelNormal}
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic UseProjectedData IsAoiAdHoc useSpatialFilter  IsPolylabelNormal
+					select
+						mup.areasymbol
+						, mup.SpatialVersion
+						, mup.MapUnitSymbol
+						, mup.NationalMapUnitSymbol
+						, mup.MapUnitKey
+						, mup.AreaAcres
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mup.AoiSoilMapUnitPolygonProj
+						, AP.AoiPartName
+						, cast(mup.MuPolygonKey as varchar(12)) + ':' + cast(AP.AoiPartNum as varchar(12)) [uniquekey]
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitPolygon MUP with(nolock)
+						on MUP.AoiID = TM.AoiId
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUP.MapUnitKey
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiPart AP with(nolock) 
+						on MUP.AoiPartId = AP.AoiPartId
+					where TM.AoiSoilThematicMapID = {InterpresultId}
+					and  mup.AoiSoilMapUnitPolygonProj.STIntersects(Geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+			}
+		}
+		{~? {~! {useSpatialFilter} }
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic UseProjectedData IsAoiAdHoc NOT useSpatialFilter  IsPolylabelNormal
+					select
+						mup.areasymbol
+						, mup.SpatialVersion
+						, mup.MapUnitSymbol
+						, mup.NationalMapUnitSymbol
+						, mup.MapUnitKey
+						, mup.AreaAcres
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mup.AoiSoilMapUnitPolygonProj
+						, AP.AoiPartName
+						, cast(mup.MuPolygonKey as varchar(12)) + ':' + cast(AP.AoiPartNum as varchar(12)) [uniquekey]
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitPolygon MUP with(nolock)
+						on MUP.AoiID = TM.AoiId
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUP.MapUnitKey
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiPart AP with(nolock) 
+						on MUP.AoiPartId = AP.AoiPartId
+					where TM.AoiSoilThematicMapID = {InterpresultId}
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+		}		
+	}
+	{~? {IsAoiSsaBased}
+		{~? {useSpatialFilter}
+			{~? {IsPolylabelMultipart}
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic UseProjectedData IsAoiSsaBased useSpatialFilter  IsPolylabelMultipart
+					select 
+					  mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.muPolygonProj [AoiSoilMapUnitPolygonProj]
+						, AoiPartName
+						, mupoly.uniquekey
+					from 
+					  dbo.SDA_Get_Simple_Mupolygons_clipped_to_SSAAoi_and_WM_Bbox (
+							(select top 1 aoiid from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+							 where AoiSoilThematicMapId = {InterpresultId})
+							, {spatialFilter}) mupoly
+					  left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+					  on MR.AoiSoilThematicMapID = {InterpresultId} and mupoly.mukey = MR.mapunitkey
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+			}
+			{~? {IsPolylabelNormal}
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic UseProjectedData IsAoiAdHoc useSpatialFilter  IsPolylabelNormal
+					select
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.muPolygonProj.STIntersection(geometry::STGeomFromText({spatialFilter}, 3857)) [AoiSoilMapUnitPolygonProj]
+						, mupoly.MuPolygonKey
+					FROM {AoiSoilThematicMapDatabase}.dbo.AOI as AOI with(nolock)
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+					on TM.AoiSoilThematicMapID = {InterpresultId} and TM.AoiID = AOI.AoiId,
+					dbo.mupolygon mupoly with(nolock)
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) 
+					on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUPOLY.mukey
+					where AOI.areasymbol = mupoly.areasymbol
+					and mupoly.muPolygonProj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"				
+			}
+		}
+		{~? {~! {useSpatialFilter} }
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic UseProjectedData IsAoiAdHoc NOT useSpatialFilter  IsPolylabelNormal
+					select
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.muPolygonProj.STIntersection(geometry::STGeomFromText({spatialFilter}, 3857)) [AoiSoilMapUnitPolygonProj]
+						, mupoly.MuPolygonKey
+					FROM {AoiSoilThematicMapDatabase}.dbo.AOI as AOI with(nolock)
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+					on TM.AoiSoilThematicMapID = {InterpresultId} and TM.AoiID = AOI.AoiId,
+					dbo.mupolygon mupoly with(nolock)
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) 
+					on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MUPOLY.mukey
+					where AOI.areasymbol = mupoly.areasymbol
+				) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+	{~? {IsAoiMukeyListBased}
+		{~? {useSpatialFilter}
+			{~? {IsPolylabelMultipart}
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic useSpatialFilter IsAoiMukeyListBased UseProjectedData IsPolylabelMultipart
+					select 
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.muPolygonProj [AoiSoilMapUnitPolygonProj]
+						, AoiPartName
+						, mupoly.uniquekey
+					from dbo.SDA_Get_Simple_Mupolygons_clipped_to_MukeylistAoi_and_WM_Bbox (
+						(select top 1 aoiid from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock) 
+						 where AoiSoilThematicMapId = {InterpresultId})
+						 , {spatialFilter}) mupoly
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = mupoly.mukey
+				) as subqry using unique uniquekey using SRID={DataSourceProjectionStringSrid}"
+			}
+			{~? {IsPolylabelNormal}
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic useSpatialFilter IsAoiMukeyListBased UseProjectedData IsPolylabelNormal
+					select 
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.muPolygonProj [AoiSoilMapUnitPolygonProj]
+						, mupoly.mupolygonkey
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiMapunit MU with(nolock) 
+						on MU.aoiid = TM.Aoiid
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MU.MapUnitKey
+					join dbo.mupolygon MUPOLY with(nolock) on MUPOLY.mukey = MR.MapUnitKey
+					where TM.AoiSoilThematicMapId = {InterpresultId}
+					and mupoly.muPolygonProj.STIntersects(Geometry::STGeomFromText({spatialFilter}, 3857)) = 1			
+				) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"
+			}
+		}
+		{~? {~! {useSpatialFilter} }
+				DATA "AoiSoilMapUnitPolygonProj from (
+					-- case mapunitpolythematic NOT IsWssThematic NOT useSpatialFilter IsAoiMukeyListBased UseProjectedData IsPolylabelNormal
+					select 
+						mupoly.areasymbol
+						, mupoly.SpatialVersion
+						, mupoly.musym [MapUnitSymbol]
+						, mupoly.nationalmusym [NationalMapUnitSymbol]
+						, mupoly.mukey [MapUnitKey]
+						, mupoly.muareaacres [AreaAcres]
+						, mr.MapUnitRatingString
+						, mr.MapUnitRatingNumeric
+						, mr.RgbString
+						, mupoly.muPolygonProj [AoiSoilMapUnitPolygonProj]
+						, mupoly.mupolygonkey
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMap TM with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiMapunit MU with(nolock) 
+						on MU.aoiid = TM.Aoiid
+					join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) 
+						on MR.AoiSoilThematicMapID = {InterpresultId} and MR.MapUnitKey = MU.MapUnitKey
+					join dbo.mupolygon MUPOLY with(nolock) on MUPOLY.mukey = MR.MapUnitKey
+					where TM.AoiSoilThematicMapId = {InterpresultId}		
+				) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"
+		}
+	}
+}
+
+# Group: WSS ThematicMapId
+	# The IsWSSThematic parameter is only valid for projected data with a spatial filter.
+	# It is only applicable for an AdHoc AOI or SSA AOI,
+	# In addition the "polylabel" options are ignored.
+{~? {~& {IsWssThematic} {UseGeographicData} } 
+	# This is a fill-in case, it is not used for normal spatial purposes.
+		DATA "AoiSoilMapUnitPolygonGeo from (
+			-- case: mapunitpolythematic IsWssThematic UseGeographicData
+			SELECT 
+				mupoly.AreaSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [AreaSymbol]
+				, mupoly.SpatialVersion
+				, mupoly.MapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitSymbol]
+				, mupoly.NationalMapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [NationalMapUnitSymbol]
+				, mupoly.MapUnitKey
+				, mupoly.AreaAcres
+				, mr.MapUnitRatingString COLLATE SQL_Latin1_General_CP1_CI_AS  [MapUnitRatingString]
+				, mr.MapUnitRatingNumeric
+				, mr.RgbString COLLATE SQL_Latin1_General_CP1_CI_AS [RgbString]
+				, mupoly.AoiSoilMapUnitPolygonGeo
+				, MuPolygonKey
+			from 
+				{AoiSoilThematicMapDatabase}.dbo.Aoi AOI with(nolock) 
+				left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) on AOI.aoiid = MR.aoiid
+				left join BAF.dbo.AoiSoilMapUnitPolygon mupoly with(nolock,index(PK_AoiSoilMapUnitPolygon)) 
+				ON mr.MapUnitKey = mupoly.MapUnitKey and mupoly.AoiID = mr.AoiID
+			where mr.AoiSoilThematicMapID = {ThematicMapId}
+			and AOI.areasymbol is null
+		) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"	
+}
+{~? {~& {~& {IsWssThematic} {UseProjectedData} } {~! {useSpatialFilter} } }
+	# This is a fill-in case, it is not used for normal spatial purposes.
+		DATA "AoiSoilMapUnitPolygonProj from (
+			-- case: mapunitpolythematic IsWssThematic UseProjectedData NOT useSpatialFilter
+			SELECT 
+				mupoly.AreaSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [AreaSymbol]
+				, mupoly.SpatialVersion
+				, mupoly.MapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitSymbol]
+				, mupoly.NationalMapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [NationalMapUnitSymbol]
+				, mupoly.MapUnitKey
+				, mupoly.AreaAcres
+				, mr.MapUnitRatingString COLLATE SQL_Latin1_General_CP1_CI_AS  [MapUnitRatingString]
+				, mr.MapUnitRatingNumeric
+				, mr.RgbString COLLATE SQL_Latin1_General_CP1_CI_AS [RgbString]
+				, mupoly.AoiSoilMapUnitPolygonProj
+				, MuPolygonKey
+			from 
+				{AoiSoilThematicMapDatabase}.dbo.Aoi AOI with(nolock) 
+				left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) on AOI.aoiid = MR.aoiid
+				left join BAF.dbo.AoiSoilMapUnitPolygon mupoly with(nolock,index(PK_AoiSoilMapUnitPolygon)) 
+				ON mr.MapUnitKey = mupoly.MapUnitKey and mupoly.AoiID = mr.AoiID
+			where mr.AoiSoilThematicMapID = {ThematicMapId}
+			and AOI.areasymbol is null
+		) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"	
+}
+{~? {~& {~& {IsWssThematic} {UseProjectedData} } {useSpatialFilter} } 
+	# The IsWSSThematic parameter is only valid for projected data with a spatial filter.
+	# It is only applicable for an AdHoc AOI or SSA AOI,
+	# In addition the "polylabel" options are ignored.
+	  UNITS METERS
+	{~? {IsAoiAdHoc}
+		DATA "AoiSoilMapUnitPolygonProj from (
+			-- case: mapunitpolythematic IsWssThematic UseProjectedData useSpatialFilter IsAoiAdHoc
+			SELECT 
+				mupoly.AreaSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [AreaSymbol]
+				, mupoly.SpatialVersion
+				, mupoly.MapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitSymbol]
+				, mupoly.NationalMapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [NationalMapUnitSymbol]
+				, mupoly.MapUnitKey
+				, mupoly.AreaAcres
+				, mr.MapUnitRatingString COLLATE SQL_Latin1_General_CP1_CI_AS  [MapUnitRatingString]
+				, mr.MapUnitRatingNumeric
+				, mr.RgbString COLLATE SQL_Latin1_General_CP1_CI_AS [RgbString]
+				, mupoly.AoiSoilMapUnitPolygonProj
+				, MuPolygonKey
+			from 
+				{WssAoiSoilThematicMapDatabase}.dbo.Aoi AOI with(nolock) 
+				left join {WssAoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) on AOI.aoiid = MR.aoiid
+				left join BAF.dbo.AoiSoilMapUnitPolygon mupoly with(nolock,index(PK_AoiSoilMapUnitPolygon)) 
+				ON mr.MapUnitKey = mupoly.MapUnitKey and mupoly.AoiID = mr.AoiID
+			where mr.AoiSoilThematicMapID = {ThematicMapId}
+			and AOI.areasymbol is null
+			and MuPolygonKey in (
+				select mupolygonkey from 
+					sdm.dbo.SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+		) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"	
+	}
+	{~? {IsAoiSsaBased}
+		DATA "AoiSoilMapUnitPolygonProj from (
+			-- case: mapunitpolythematic IsWssThematic UseProjectedData useSpatialFilter IsAoiSsaBased
+			select
+				mupoly.AreaSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [AreaSymbol]
+				, mupoly.SpatialVersion
+				, mupoly.musym COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitSymbol] 
+				, mupoly.nationalmusym COLLATE SQL_Latin1_General_CP1_CI_AS [NationalMapUnitSymbol]
+				, mupoly.mukey [MapUnitKey]
+				, mupoly.muareaacres [AreaAcres]
+				, mr.MapUnitRatingString COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitRatingString]
+				, mr.MapUnitRatingNumeric
+				, mr.RgbString COLLATE SQL_Latin1_General_CP1_CI_AS  [RgbString] 
+				, mupoly.mupolygonproj [AoiSoilMapUnitPolygonProj]
+				, MuPolygonKey
+			from
+				baf.dbo.aoi AOI with(nolock)
+				left join baf.dbo.AoiSoilThematicMapRating MR with(nolock) on AOI.aoiid = MR.aoiid
+				left join sdm.dbo.mupolygon mupoly on MR.mapunitkey = mupoly.mukey
+			where mr.AoiSoilThematicMapID = @ThematicMapId
+			and AOI.areasymbol is not null
+			and mupolygonkey in (
+				select mupolygonkey from 
+					sdm.dbo.SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+		) as subqry using unique MuPolygonKey using SRID={DataSourceProjectionStringSrid}"	
+	}
+}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  {~? {~! {IsPolylabelNone} }
+	labelitem MapUnitSymbol
+  }
+  opacity 50
+  class
+    style
+      WIDTH 0.75
+      Outlinecolor '#000000'
+	  color [RgbString]
+    end # of style
+	{~? {~! {IsPolylabelNone} }
+    label
+      Color '#ff8000'
+      Outlinecolor '#000000'
+      Outlinewidth 1
+      Font 'arial-bold'
+      Position auto
+      type truetype
+      PRIORITY 9
+      size 7
+      FORCE    False
+      PARTIALS False
+    end  #end of label
+    LEADER
+      GRIDSTEP 5
+      MAXDISTANCE 30
+      STYLE
+	    COLOR '#000000'
+		WIDTH 1
+      END
+    END # end of leader
+	}
+	#TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitpolythematic_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitpolythematic_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitpolythematic_footer.html'
+
+END # of layer MapunitPolyThematic
+
+# Mapunit Lines Thematic Map
+
+LAYER  
+  NAME mapunitlinethematic
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE LINE
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Line Thematic Map'
+	'ows_abstract'          'Map unit lines representing a selected soil interpretation.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,lines,mapunit interpretation'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'MapUnitKey'
+	'ows_enable_request'    '*'
+	'gml_geometries'        'multiLine'
+	'gml_multiLine_type'    'multiline'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	# metadata
+  
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+  {~? {UseGeographicData}
+	  UNITS DD
+	  DATA "AoiSoilMapUnitLineGeo from (
+			{~? {~! {~| {IsAoiSsaBased} {IsAoiMukeyListBased} } } 
+				SELECT 
+				  muline.AreaSymbol, muline.SpatialVersion, muline.MapUnitSymbol, muline.NationalMapUnitSymbol,
+				  muline.MapUnitKey, muline.AreaAcres,
+				  mr.MapUnitRatingString, mr.MapUnitRatingNumeric, mr.RgbString, 
+				  muline.AoiSoilMapUnitLineGeo, MuLineKey
+				from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock)
+				left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitLine muline {~? {useSpatialFilter} with(nolock,index(PK_AoiSoilMapUnitLine)) }		
+				ON mr.MapUnitKey = muline.MapUnitKey and muline.AoiID = mr.AoiID
+				where mr.AoiSoilThematicMapID = {ThematicMapId}
+				{~? {useSpatialFilter}
+						and MuLineKey in (select mulinekey from sdm.dbo.SDA_Get_Mulinekey_from_intersection_with_WktWGS84({spatialFilter}))
+				}
+			}
+			{~? {~| {IsAoiSsaBased} {IsAoiMukeyListBased} }
+				select
+				  muline.AreaSymbol, muline.SpatialVersion, muline.musym [MapUnitSymbol], muline.nationalmusym [NationalMapUnitSymbol],
+				  muline.mukey [MapUnitKey], muline.muareaacres [AreaAcres],
+				  mr.MapUnitRatingString, mr.MapUnitRatingNumeric, mr.RgbString, 
+				  muline.mulinegeo [AoiSoilMapUnitLineGeo], MuLineKey
+				from
+				  {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock)
+				  left join sdm.dbo.muline on MR.mapunitkey = muline.mukey
+				where mr.AoiSoilThematicMapID = {ThematicMapId}
+				{~? {useSpatialFilter}
+						and mulinekey in (select mulinekey from sdm.dbo.SDA_Get_Mulinekey_from_intersection_with_WktWGS84({spatialFilter}))
+				}
+			}
+		) as subqry using unique mulineKey using SRID={DataSourceProjectionStringSrid}"
+  }
+  {~? {UseProjectedData}
+	  UNITS METERS
+	  DATA "AoiSoilMapUnitLineProj from (
+				{~? {IsWssThematic}
+				select
+					muline.AreaSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [AreaSymbol]
+					, muline.SpatialVersion
+					, muline.musym COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitSymbol] 
+					, muline.nationalmusym COLLATE SQL_Latin1_General_CP1_CI_AS [NationalMapUnitSymbol]
+					, muline.mukey [MapUnitKey]
+					, muline.muareaacres [AreaAcres]
+					, mr.MapUnitRatingString COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitRatingString]
+					, mr.MapUnitRatingNumeric
+					, mr.RgbString COLLATE SQL_Latin1_General_CP1_CI_AS  [RgbString] 
+					, muline.mulineproj [AoiSoilMapUnitLineProj]
+					, MuLineKey
+				from
+					{AoiSoilThematicMapDatabase}.dbo.Aoi AOI with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) on AOI.aoiid = MR.aoiid
+					left join sdm.dbo.muline on MR.mapunitkey = muline.mukey
+				where mr.AoiSoilThematicMapID = {ThematicMapId}
+				and AOI.areasymbol is not null
+				and mulinekey in (
+					select mulinekey from 
+						sdm.dbo.SDA_Get_Mulinekey_from_intersection_with_WktWM({spatialFilter}))
+			UNION ALL
+				SELECT 
+					muline.AreaSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [AreaSymbol]
+					, muline.SpatialVersion
+					, muline.MapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitSymbol]
+					, muline.NationalMapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [NationalMapUnitSymbol]
+					, muline.MapUnitKey
+					, muline.AreaAcres
+					, mr.MapUnitRatingString COLLATE SQL_Latin1_General_CP1_CI_AS  [MapUnitRatingString]
+					, mr.MapUnitRatingNumeric
+					, mr.RgbString COLLATE SQL_Latin1_General_CP1_CI_AS [RgbString]
+					, muline.AoiSoilMapUnitLineProj
+					, MuLineKey
+				from 
+					{AoiSoilThematicMapDatabase}.dbo.Aoi AOI with(nolock) 
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) on AOI.aoiid = MR.aoiid
+					left join BAF.dbo.AoiSoilMapUnitLine muline with(nolock,index(PK_AoiSoilMapUnitLine))
+				ON mr.MapUnitKey = muline.MapUnitKey and muline.AoiID = mr.AoiID
+				where mr.AoiSoilThematicMapID = {ThematicMapId}
+				and AOI.areasymbol is null
+				and MuLineKey in (
+					select mulinekey from 
+						sdm.dbo.SDA_Get_Mulinekey_from_intersection_with_WktWM({spatialFilter}))
+			}
+			{~? {~! {IsWssThematic} }
+				{~? {~! {~| {IsAoiSsaBased} {IsAoiMukeyListBased} } }
+					SELECT 
+					  muline.AreaSymbol, muline.SpatialVersion, muline.MapUnitSymbol, muline.NationalMapUnitSymbol,
+					  muline.MapUnitKey, muline.AreaAcres,
+					  mr.MapUnitRatingString, mr.MapUnitRatingNumeric, mr.RgbString, 
+					  muline.AoiSoilMapUnitLineProj, MuLineKey
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitLine muline {~? {useSpatialFilter} with(nolock,index(PK_AoiSoilMapUnitLine)) }		
+					ON mr.MapUnitKey = muline.MapUnitKey and muline.AoiID = mr.AoiID
+					where mr.AoiSoilThematicMapID = {ThematicMapId}
+					{~? {useSpatialFilter}
+							and MulineKey in (select muLinekey from sdm.dbo.SDA_Get_Mulinekey_from_intersection_with_WktWM({spatialFilter}))
+					}
+				}
+				{~? {~| {IsAoiSsaBased} {IsAoiMukeyListBased} }
+					select
+					  muline.AreaSymbol, muline.SpatialVersion, muline.musym [MapUnitSymbol], muline.nationalmusym [NationalMapUnitSymbol],
+					  muline.mukey [MapUnitKey], muline.muareaacres [AreaAcres],
+					  mr.MapUnitRatingString, mr.MapUnitRatingNumeric, mr.RgbString, 
+					  muline.mulineproj [AoiSoilMapUnitLineProj], MuLineKey
+					from
+					  {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock)
+					  left join sdm.dbo.muline on MR.mapunitkey = muline.mukey
+					where mr.AoiSoilThematicMapID = {ThematicMapId}
+					{~? {useSpatialFilter}
+							and mulinekey in (select muLinekey from sdm.dbo.SDA_Get_MuLinekey_from_intersection_with_WktWM({spatialFilter}))
+					}
+				}
+			}
+		) as subqry using unique mulineKey using SRID={DataSourceProjectionStringSrid}"
+  }
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem MapUnitSymbol
+  OPACITY 100
+  CLASS
+    STYLE
+      WIDTH 2
+      COLOR [RgbString]
+    END
+    STYLE #black dashed line
+      WIDTH 2
+      COLOR '#000000'
+      PATTERN 1 8 END
+    END
+    label
+      Color '#ff8000'
+      Font 'arial-bold'
+      Size 7
+      OutlineColor '#000000'
+      OutlineWidth 1
+      Position auto
+      type truetype
+      FORCE    False
+      PARTIALS False
+      PRIORITY 9
+      # the line-following label details, all experimental
+      BUFFER 14       # nominal 1/5 inch separation between labels
+      REPEATDISTANCE 280  # nominal 4 inch line distance
+      ANGLE FOLLOW
+      MAXOVERLAPANGLE 22.5
+      MINFEATURESIZE auto
+    end  #end of label   
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  END # end of CLASS
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitlinethematic_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitlinethematic_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitlinethematic_footer.html'
+END # Layer mapunitlinethematic
+
+# Mapunit Points Thematic Map
+
+LAYER  
+  NAME mapunitpointthematic
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 250000
+  LABELMINSCALEDENOM     0.01
+  LABELMAXSCALEDENOM     100000
+  GROUP 'Soils'
+  TYPE POINT
+  STATUS ON
+  METADATA
+	'ows_title'             'Soil Mapunit Point Thematic Map'
+	'ows_abstract'          'Map unit points representing a selected soil interpretation.'
+	'ows_keywordlist'       'Soils,SSURGO Mapunit,points,mapunit interpretation'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'MapUnitKey'
+	'ows_enable_request'    '*'
+	'gml_geometries'        'multiPoint'
+	'gml_multiPoint_type'   'multipoint'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	 # metadata
+  
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+ {~? {UseGeographicData}
+	  UNITS DD
+	  DATA "AoiSoilMapUnitPointGeo from (
+			{~? {~! {~| {IsAoiSsaBased} {IsAoiMukeyListBased} } }
+				SELECT 
+				  mupoint.AreaSymbol, mupoint.SpatialVersion, mupoint.MapUnitSymbol, mupoint.NationalMapUnitSymbol,
+				  mupoint.MapUnitKey, mupoint.AreaAcres,
+				  mr.MapUnitRatingString, mr.MapUnitRatingNumeric, mr.RgbString, 
+				  mupoint.AoiSoilMapUnitPointGeo, MuPointKey
+				from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock)
+				left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitPoint mupoint {~? {useSpatialFilter} with(nolock,index(PK_AoiSoilMapUnitPoint)) }		
+				ON mr.MapUnitKey = mupoint.MapUnitKey and mupoint.AoiID = mr.AoiID
+				where mr.AoiSoilThematicMapID = {ThematicMapId}
+				{~? {useSpatialFilter}
+						and MuPointKey in (select mupointkey from sdm.dbo.SDA_Get_Mupointkey_from_intersection_with_WktWGS84({spatialFilter}))
+				}
+			}
+			{~? {~| {IsAoiSsaBased} {IsAoiMukeyListBased} }
+				select
+				  mupoint.AreaSymbol, mupoint.SpatialVersion, mupoint.musym [MapUnitSymbol], mupoint.nationalmusym [NationalMapUnitSymbol],
+				  mupoint.mukey [MapUnitKey], mupoint.muareaacres [AreaAcres],
+				  mr.MapUnitRatingString, mr.MapUnitRatingNumeric, mr.RgbString, 
+				  mupoint.mupointgeo [AoiSoilMapUnitPointGeo], MuPointKey
+				from
+				  {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock)
+				  left join sdm.dbo.mupoint on MR.mapunitkey = mupoint.mukey
+				where mr.AoiSoilThematicMapID = {ThematicMapId}
+				{~? {useSpatialFilter}
+						and mupointkey in (select mupointkey from sdm.dbo.SDA_Get_Mupointkey_from_intersection_with_WktWGS84({spatialFilter}))
+				}
+			}
+		) as subqry using unique mupointKey using SRID={DataSourceProjectionStringSrid}"
+  }
+  {~? {UseProjectedData}
+	  UNITS METERS
+	  DATA "AoiSoilMapUnitPointProj from (
+				{~? {IsWssThematic}
+				select
+					mupoint.AreaSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [AreaSymbol]
+					, mupoint.SpatialVersion
+					, mupoint.musym COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitSymbol] 
+					, mupoint.nationalmusym COLLATE SQL_Latin1_General_CP1_CI_AS [NationalMapUnitSymbol]
+					, mupoint.mukey [MapUnitKey]
+					, mupoint.muareaacres [AreaAcres]
+					, mr.MapUnitRatingString COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitRatingString]
+					, mr.MapUnitRatingNumeric
+					, mr.RgbString COLLATE SQL_Latin1_General_CP1_CI_AS  [RgbString] 
+					, mupoint.mupointproj [AoiSoilMapUnitPointProj]
+					, MuPointKey
+				from
+					{AoiSoilThematicMapDatabase}.dbo.Aoi AOI with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock) on AOI.aoiid = MR.aoiid
+					left join sdm.dbo.mupoint on MR.mapunitkey = mupoint.mukey
+				where mr.AoiSoilThematicMapID = {ThematicMapId}
+				and AOI.areasymbol is not null
+				and mupointkey in (
+					select mupointkey from 
+						sdm.dbo.SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))
+			UNION ALL
+				SELECT 
+					mupoint.AreaSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [AreaSymbol]
+					, mupoint.SpatialVersion
+					, mupoint.MapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [MapUnitSymbol]
+					, mupoint.NationalMapUnitSymbol COLLATE SQL_Latin1_General_CP1_CI_AS [NationalMapUnitSymbol]
+					, mupoint.MapUnitKey
+					, mupoint.AreaAcres
+					, mr.MapUnitRatingString COLLATE SQL_Latin1_General_CP1_CI_AS  [MapUnitRatingString]
+					, mr.MapUnitRatingNumeric
+					, mr.RgbString COLLATE SQL_Latin1_General_CP1_CI_AS [RgbString]
+					, mupoint.AoiSoilMapUnitPointProj
+					, MuPointKey
+				from 
+					{AoiSoilThematicMapDatabase}.dbo.Aoi AOI with(nolock) 
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock) on AOI.aoiid = MR.aoiid
+					left join BAF.dbo.AoiSoilMapUnitPoint mupoint with(nolock,index(PK_AoiSoilMapUnitPoint))
+				ON mr.MapUnitKey = mupoint.MapUnitKey and mupoint.AoiID = mr.AoiID
+				where mr.AoiSoilThematicMapID = {ThematicMapId}
+				and AOI.areasymbol is null
+				and MuPointKey in (
+					select mupointkey from 
+						sdm.dbo.SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))
+			}
+			{~? {~! {IsWssThematic} }
+				{~? {~! {~| {IsAoiSsaBased} {IsAoiMukeyListBased} } }
+					SELECT 
+					  mupoint.AreaSymbol, mupoint.SpatialVersion, mupoint.MapUnitSymbol, mupoint.NationalMapUnitSymbol,
+					  mupoint.MapUnitKey, mupoint.AreaAcres,
+					  mr.MapUnitRatingString, mr.MapUnitRatingNumeric, mr.RgbString, 
+					  mupoint.AoiSoilMapUnitPointProj, MuPointKey
+					from {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating mr with(nolock)
+					left join {AoiSoilThematicMapDatabase}.dbo.AoiSoilMapUnitPoint mupoint {~? {useSpatialFilter} with(nolock,index(PK_AoiSoilMapUnitPoint)) }		
+					ON mr.MapUnitKey = mupoint.MapUnitKey and mupoint.AoiID = mr.AoiID
+					where mr.AoiSoilThematicMapID = {ThematicMapId}
+					{~? {useSpatialFilter}
+							and MupointKey in (select muPointkey from sdm.dbo.SDA_Get_Mupointkey_from_intersection_with_WktWM({spatialFilter}))
+					}
+				}
+				{~? {~| {IsAoiSsaBased} {IsAoiMukeyListBased} }
+					select
+					  mupoint.AreaSymbol, mupoint.SpatialVersion, mupoint.musym [MapUnitSymbol], mupoint.nationalmusym [NationalMapUnitSymbol],
+					  mupoint.mukey [MapUnitKey], mupoint.muareaacres [AreaAcres],
+					  mr.MapUnitRatingString, mr.MapUnitRatingNumeric, mr.RgbString, 
+					  mupoint.mupointproj [AoiSoilMapUnitPointProj], MuPointKey
+					from
+					  {AoiSoilThematicMapDatabase}.dbo.AoiSoilThematicMapRating MR with(nolock)
+					  left join sdm.dbo.mupoint on MR.mapunitkey = mupoint.mukey
+					where mr.AoiSoilThematicMapID = {ThematicMapId}
+					{~? {useSpatialFilter}
+							and mupointkey in (select muPointkey from sdm.dbo.SDA_Get_MuPointkey_from_intersection_with_WktWM({spatialFilter}))
+					}
+				}
+			}
+		) as subqry using unique mupointKey using SRID={DataSourceProjectionStringSrid}"
+  }
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem MapUnitSymbol
+  OPACITY 100
+  CLASS
+    style
+      color [RgbString]
+      OutlineColor '#000000'
+      OutlineWidth 1
+      size 6
+      symbol 'map unit point'
+    end
+    label
+      Color '#ff8000'
+      Font 'arial-bold'
+      Size 7
+      OutlineColor '#000000'
+      OutlineWidth 1
+      Position uc
+      type truetype
+      FORCE    False
+      PARTIALS False
+      PRIORITY 9
+      OFFSET 0 2
+    end  #end of label
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  #end of class
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\mapunitpointthematic_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\mapunitpointthematic_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\mapunitpointthematic_footer.html'
+
+END # Layer mapunitpointthematic
+
+# surveyareapoly
+LAYER  
+  NAME surveyareapoly
+  MINSCALEDENOM 100
+  MAXSCALEDENOM 5000000
+  GROUP 'Soils'
+  TYPE POLYGON
+  STATUS ON
+  METADATA
+	'ows_title'             'SSURGO Soil Survey Area Polygon'
+	'ows_abstract'          'Status of SSURGO soil survey areas.'
+	'ows_keywordlist'       'Soils,SSURGO Soil Survey Area'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'  ##for identify
+	'gml_include_items'     'all'  ##for identify
+	'gml_SAVERSION_alias'   'Survey_Area_Version'
+	'gml_featureid'         'AREASYMBOL'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPolygon'
+	'gml_multiPolygon_type' 'multipolygon'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+ END  # metadata
+
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+  {~? {UseGeographicData}
+  UNITS DD
+  DATA "sapolygongeo from 
+    (select
+       areasymbol, areaname, sapubstatuscode, sapubstatusname, wlupdated, mapregion, saversion, 
+	 saverest, iscomplete, tabularmudist, spatialmudist, sapolygongeo, sapolygonkey 
+	 from SASTATUSMAP
+		{~? {useSpatialFilter}
+		    with(index(pk_sastatusmap))
+			where sapolygonkey in (select sapolygonkey from SDA_Get_Sapolygonkey_from_intersection_with_sastatusmap_WktWgs84({spatialFilter}))
+		}
+	) as subqry using unique sapolygonkey  using SRID={DataSourceProjectionStringSrid}"
+  }
+  {~? {UseProjectedData}
+  UNITS METERS
+  DATA "sapolygonproj from 
+    (select 
+       areasymbol, areaname, sapubstatuscode, sapubstatusname, wlupdated, mapregion, saversion, 
+	 saverest, iscomplete, tabularmudist, spatialmudist, sapolygonproj, sapolygonkey 
+	 from SASTATUSMAP
+		{~? {useSpatialFilter}
+		    with(index(pk_sastatusmap))
+			where sapolygonkey in (select sapolygonkey from SDA_Get_Sapolygonkey_from_intersection_with_sastatusmap_WktWm({spatialFilter}))
+		}
+	) as subqry using unique sapolygonkey  using SRID={DataSourceProjectionStringSrid}"
+  }
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER' # Enable connection pooling
+  DUMP TRUE   ##required  for WFS server
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem areaname
+  LABELMINSCALEDENOM     25000
+  LABELMAXSCALEDENOM     1000000
+  CLASSITEM 'SAPUBSTATUSCODE'
+  OPACITY 100
+  # Spatial available
+  class
+    NAME 'Spatial Available'
+    EXPRESSION ([SAPUBSTATUSCODE] = 2)
+    style
+      WIDTH 1
+	  COLOR 115 76 0
+      Outlinecolor '#000000'
+    end # of style
+    label
+      Color '#e1dd00'
+      Outlinecolor '#000000'
+      Outlinewidth 1
+      Font 'arial-bold'
+      Position auto
+      type truetype
+      size 7
+      FORCE  False
+      PARTIALS False
+      PRIORITY 7
+      BUFFER 30
+    end #end of label
+    LEADER
+      GRIDSTEP 5
+      MAXDISTANCE 30
+      STYLE
+        COLOR '#000000'
+        WIDTH 1
+      END
+    END # end of leader
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end # of class spatial available
+  # Spatial unavailable
+  class
+    NAME 'Spatial Unavailable'
+    EXPRESSION ([SAPUBSTATUSCODE] ne 2)
+    style
+      WIDTH 1
+      COLOR 204 204 204
+      OUTLINECOLOR 0 0 0
+    end # of style
+    label
+      Color '#e1dd00'
+      Outlinecolor '#000000'
+      Outlinewidth 1
+      Font 'arial-bold'
+      Position auto
+      type truetype
+      size 7
+      FORCE  False
+      PARTIALS False
+      PRIORITY 7
+      BUFFER 30
+    end #end of label
+    LEADER
+      GRIDSTEP 5
+      MAXDISTANCE 30
+      STYLE
+        COLOR '#000000'
+        WIDTH 1
+      END
+    END # end of leader
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end # of class spatial unavailable
+  
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\sa_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\sa_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\sa_footer.html'
+END ##Layer surveyareapoly
+
+LAYER  
+  NAME surveyareapolytransparent
+  MINSCALEDENOM 100
+  MAXSCALEDENOM 5000000
+  GROUP 'Soils'
+  TYPE POLYGON
+  STATUS ON
+  METADATA
+  	'ows_title'             'SSURGO Soil Survey Area Polygon with semi-transparent fill'
+	'ows_abstract'          'Status of SSURGO soil survey areas. Semi-transparent fill rendered based on spatial data available.'
+	'ows_keywordlist'       'Soils,SSURGO Soil Survey Area'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'  ##for identify
+	'gml_include_items'     'all'  ##for identify
+	'gml_SAVERSION_alias'   'Survey_Area_Version'
+	'gml_featureid'         'AREASYMBOL'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPolygon'
+	'gml_multiPolygon_type' 'multipolygon'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	 # metadata
+
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+  {~? {UseGeographicData}
+  UNITS DD
+  DATA "sapolygongeo from 
+    (select 
+       areasymbol, areaname, sapubstatuscode, sapubstatusname, wlupdated, mapregion, saversion, 
+	 saverest, iscomplete, tabularmudist, spatialmudist, sapolygongeo, sapolygonkey 
+	 from SASTATUSMAP
+		{~? {useSpatialFilter}
+		    with(index(pk_sastatusmap))
+			where sapolygonkey in (select sapolygonkey from SDA_Get_Sapolygonkey_from_intersection_with_sastatusmap_WktWgs84({spatialFilter}))
+		}
+	 ) as subqry using unique sapolygonkey  using SRID={DataSourceProjectionStringSrid}"
+  }
+  {~? {UseProjectedData}
+  UNITS METERS
+  DATA "sapolygonproj from 
+    (select 
+       areasymbol, areaname, sapubstatuscode, sapubstatusname, wlupdated, mapregion, saversion, 
+	 saverest, iscomplete, tabularmudist, spatialmudist, sapolygonproj, sapolygonkey 
+	 from SASTATUSMAP
+		{~? {useSpatialFilter}
+		    with(index(pk_sastatusmap))
+			where sapolygonkey in (select sapolygonkey from SDA_Get_Sapolygonkey_from_intersection_with_sastatusmap_WktWm({spatialFilter}))
+		}
+	 ) as subqry using unique sapolygonkey  using SRID={DataSourceProjectionStringSrid}"
+  }
+  PROCESSING 'CLOSE_CONNECTION=DEFER' # Enable connection pooling
+  DUMP TRUE   ##required  for WFS server
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  opacity 50
+  LabelItem areaname
+  LABELMINSCALEDENOM     100
+  LABELMAXSCALEDENOM     1000000
+  CLASSITEM 'SAPUBSTATUSCODE'
+  # Spatial available
+  class
+    NAME 'Spatial Available'
+    EXPRESSION ([SAPUBSTATUSCODE] = 2)
+    style
+      WIDTH 1
+	  COLOR 115 76 0
+      Outlinecolor '#000000'
+    end # of style
+    label
+      Color '#e1dd00'
+      Outlinecolor '#000000'
+      Outlinewidth 1
+      Font 'arial-bold'
+      Position auto
+      type truetype
+      size 7
+      FORCE  False
+      PARTIALS False
+      PRIORITY 7
+      BUFFER 30
+    end #end of label
+    LEADER
+      GRIDSTEP 5
+      MAXDISTANCE 30
+      STYLE
+        COLOR '#000000'
+        WIDTH 1
+      END
+    END # end of leader
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end # of class spatial available
+  # Spatial unavailable
+  class
+    NAME 'Spatial Unavailable'
+    EXPRESSION ([SAPUBSTATUSCODE] ne 2)
+    style
+      WIDTH 1
+      COLOR 204 204 204
+      OUTLINECOLOR 0 0 0
+    end # of style
+    label
+      Color '#e1dd00'
+      Outlinecolor '#000000'
+      Outlinewidth 1
+      Font 'arial-bold'
+      Position auto
+      type truetype
+      size 7
+      FORCE  False
+      PARTIALS False
+      PRIORITY 7
+      BUFFER 30
+    end #end of label
+    LEADER
+      GRIDSTEP 5
+      MAXDISTANCE 30
+      STYLE
+        COLOR '#000000'
+        WIDTH 1
+      END
+    END # end of leader
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end # of class spatial unavailable
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\sa_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\sa_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\sa_footer.html'
+END ##Layer surveyareapolytransparent
+
+LAYER  
+  NAME surveyareapolyoutline
+  MINSCALEDENOM 100
+  MAXSCALEDENOM 5000000
+  GROUP 'Soils'
+  TYPE POLYGON
+  STATUS ON
+  METADATA
+  	'ows_title'             'SSURGO Soil Survey Area Polygon (outline only)'
+	'ows_abstract'          'Status of SSURGO soil survey areas. No fill.'
+	'ows_keywordlist'       'Soils,SSURGO Soil Survey Area'
+	'ows_extent'            '{ows_extent}'
+	'gml_geometries'        'multiPolygon' 'gml_multiPolygon_type' 'multipolygon'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_SAVERSION_alias'   'Survey_Area_Version'
+	'gml_featureid'         'AREASYMBOL'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPolygon'
+	'gml_multiPolygon_type' 'multipolygon'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END	 # metadata
+
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+  {~? {UseGeographicData}
+  UNITS DD
+  DATA "sapolygongeo from 
+    (select 
+       areasymbol, areaname, sapubstatuscode, sapubstatusname, wlupdated, mapregion, saversion, 
+	 saverest, iscomplete, tabularmudist, spatialmudist, sapolygongeo, sapolygonkey 
+	 from SASTATUSMAP
+		{~? {useSpatialFilter}
+		    with(index(pk_sastatusmap))
+			where sapolygonkey in (select sapolygonkey from SDA_Get_Sapolygonkey_from_intersection_with_sastatusmap_WktWgs84({spatialFilter}))
+		}
+	 ) as subqry using unique sapolygonkey  using SRID={DataSourceProjectionStringSrid}"
+  }
+  {~? {UseProjectedData}
+  UNITS METERS
+  DATA "sapolygonproj from 
+    (select 
+       areasymbol, areaname, sapubstatuscode, sapubstatusname, wlupdated, mapregion, saversion, 
+	 saverest, iscomplete, tabularmudist, spatialmudist, sapolygonproj, sapolygonkey 
+	 from SASTATUSMAP
+		{~? {useSpatialFilter}
+		    with(index(pk_sastatusmap))
+			where sapolygonkey in (select sapolygonkey from SDA_Get_Sapolygonkey_from_intersection_with_sastatusmap_WktWm({spatialFilter}))
+		}
+	 ) as subqry using unique sapolygonkey  using SRID={DataSourceProjectionStringSrid}"
+  }
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER' # Enable connection pooling
+  DUMP TRUE   ##required  for WFS server
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem areaname
+  LABELMINSCALEDENOM     100
+  LABELMAXSCALEDENOM     1000000
+  OPACITY 100
+  # Spatial available
+  class
+    style
+      WIDTH 1
+      Outlinecolor '#000000'
+    end # of style
+    label
+      Color '#e1dd00'
+      Outlinecolor '#000000'
+      Outlinewidth 1
+      Font 'arial-bold'
+      Position auto
+      type truetype
+      size 7
+      FORCE  False
+      PARTIALS False
+      PRIORITY 7
+      BUFFER 30
+    end #end of label
+    LEADER
+      GRIDSTEP 5
+      MAXDISTANCE 30
+      STYLE
+        COLOR '#000000'
+        WIDTH 1
+      END
+    END # end of leader
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end # of class
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\sa_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\sa_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\sa_footer.html'
+END ##Layer surveyareapolyoutline
+
+# Feature Lines
+LAYER  
+	NAME featline
+	MINSCALEDENOM 0.01
+	MAXSCALEDENOM 250000
+	GROUP 'Soils'
+	TYPE LINE
+	STATUS ON
+	METADATA
+	'ows_title'             'Feature Line'
+	'ows_abstract'          'Lines representing various landscape features.'
+	'ows_keywordlist'       'Soils,SSURGO Featline,feature lines'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'FEATKEY'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiLine'
+	'gml_multiLine_type'    'multiline'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+	END	 # metadata
+
+	CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+	CONNECTIONTYPE PLUGIN
+	PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "featlinegeo from (
+			{~? {IsNotAoi}
+				select  
+					L.areasymbol, L.spatialversion, L.featkey, L.featlinegeo, L.featlinekey, L.featsym, D.featdesc, D.featname
+				from featline L {~? {useSpatialFilter} WITH(INDEX(pk_featline))},  featdesc D 
+				where L.featkey = D.featkey 
+				{~? {useSpatialFilter} 
+				  and featlinekey in (select featlinekey from SDA_Get_Featlinekey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select  
+					L.areasymbol, L.spatialversion, L.SoilSpotFeatureKey as featkey, 
+					L.AoiSoilSpotFeatureLineGeo as featlinegeo, 
+					L.featlinekey, L.SoilSpotFeatureSymbol as featsym, D.featdesc, D.featname
+				from bafsdacache.dbo.AoiSoilSpotFeatureLine L,  featdesc D
+				where L.aoiid={AoiID}
+				and L.SoilSpotFeatureKey = D.featkey
+				{~? {useSpatialFilter} 
+				  and L.AoiSoilSpotFeatureLineGeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select  
+					L.areasymbol, L.spatialversion, L.featkey, L.featlinegeo, L.featlinekey, L.featsym, D.featdesc, D.featname
+				from featline L {~? {useSpatialFilter} WITH(INDEX(pk_featline))},  featdesc D,
+				bafsdacache.dbo.AOI as AOI with(nolock)
+				where AOI.aoiid={AoiID}
+				and L.areasymbol=AOI.areasymbol
+				and L.featkey = D.featkey
+				{~? {useSpatialFilter} 
+				  and featlinekey in (select featlinekey from SDA_Get_Featlinekey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select
+					L.areasymbol, L.spatialversion, L.featkey, 
+					MUP.mupolygongeo.STIntersection(L.featlinegeo) as featlinegeo, 
+					L.featlinekey, L.featsym, D.featdesc, D.featname
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+					sdm.dbo.mupolygon MUP,
+					featline L,  
+					featdesc D 				
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				and L.featkey = D.featkey 
+				and MUP.mupolygongeo.STIntersects(L.featlinegeo) = 1
+				{~? {useSpatialFilter}
+					and mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}	
+		) as subqry using unique featlinekey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "featlineproj from (
+			{~? {IsNotAoi}
+				select  
+					L.areasymbol, L.spatialversion, L.featkey, L.featlineproj, L.featlinekey, L.featsym, D.featdesc, D.featname
+				from featline L {~? {useSpatialFilter} WITH(INDEX(pk_featline))},  featdesc D
+				where L.featkey = D.featkey 
+				{~? {useSpatialFilter} 
+				  and featlinekey in (select featlinekey from SDA_Get_Featlinekey_from_intersection_with_WktWm({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select  
+					L.areasymbol, L.spatialversion, L.SoilSpotFeatureKey as featkey, 
+					L.AoiSoilSpotFeatureLineProj as featlineproj, 
+					L.featlinekey, L.SoilSpotFeatureSymbol as featsym, D.featdesc, D.featname
+				from bafsdacache.dbo.AoiSoilSpotFeatureLine L,  featdesc D
+				where L.aoiid={AoiID}
+				and L.SoilSpotFeatureKey = D.featkey
+				{~? {useSpatialFilter} 
+				  and L.AoiSoilSpotFeatureLineProj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				}				
+			}
+			{~? {IsAoiSsaBased}
+				select  
+					L.areasymbol, L.spatialversion, L.featkey, L.featlineproj, L.featlinekey, L.featsym, D.featdesc, D.featname
+				from featline L {~? {useSpatialFilter} WITH(INDEX(pk_featline))},  featdesc D,
+				bafsdacache.dbo.AOI as AOI with(nolock)
+				where AOI.aoiid={AoiID}
+				and L.areasymbol=AOI.areasymbol
+				and L.featkey = D.featkey
+				{~? {useSpatialFilter} 
+				  and featlinekey in (select featlinekey from SDA_Get_Featlinekey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select
+					L.areasymbol, L.spatialversion, L.featkey, 
+					MUP.mupolygonproj.STIntersection(L.featlineproj) as featlineproj, 
+					L.featlinekey, L.featsym, D.featdesc, D.featname
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+					sdm.dbo.mupolygon MUP,
+					featline L,  
+					featdesc D 				
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				and L.featkey = D.featkey 
+				and MUP.mupolygonproj.STIntersects(L.featlineproj) = 1
+				{~? {useSpatialFilter}
+					and mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+		) as subqry using unique featlinekey using SRID={DataSourceProjectionStringSrid}"
+	}
+
+	PROCESSING 'CLOSE_CONNECTION=DEFER' # Enable connection pooling
+	DUMP TRUE   ##required  for WFS server
+	PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  labelitem featsym
+  opacity 100
+  class
+    STYLE
+      #black background
+      WIDTH 2
+      COLOR '#000000'
+    END
+    style
+      pattern 1.0 5.0 10.0 5.0 END   # on/off distances
+      # symbol 'dashed_line_5_5'
+      width 2
+      color '#FFFFFF'
+    end
+    label
+      Color '#FFFFFF'
+      Font 'arial-bold'
+      Size 7
+      OutlineColor '#000000'
+      OutlineWidth 1
+      Position auto
+      type truetype
+      FORCE    False
+      PARTIALS False
+      PRIORITY 6
+      # the line-following label details, all experimental
+      BUFFER 14           # nominal 1/5 inch separation between labels
+      REPEATDISTANCE 280  # nominal 4 inch line distance
+      ANGLE FOLLOW
+      MAXOVERLAPANGLE 22.5
+      MINFEATURESIZE auto
+    end  #end of label
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class for other
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\featline_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\featline_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\featline_footer.html'
+END # Layer featline
+
+# Feature Points
+LAYER  
+	NAME featpoint
+	MINSCALEDENOM 0.01
+	MAXSCALEDENOM 250000
+	GROUP 'Soils'
+	TYPE POINT
+	STATUS ON
+	METADATA
+	'ows_title'             'Feature Point'
+	'ows_abstract'          'Points representing various landscape features.'
+	'ows_keywordlist'       'Soils,SSURGO Featpoint,feature points'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'FEATKEY'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPoint'
+	'gml_multiPoint_type'   'multipoint'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+	END	# metadata
+
+	CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+	CONNECTIONTYPE PLUGIN
+	PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "featpointgeo from (
+			{~? {IsNotAoi}
+				select  
+					P.areasymbol, P.spatialversion, P.featkey, P.featpointgeo, P.featpointkey, 
+					P.featsym, P.markercharacter, D.featdesc, D.featname
+				from featpoint P {~? {useSpatialFilter} WITH(INDEX(pk_featpoint))},  featdesc D
+				where P.featkey = D.featkey
+				{~? {useSpatialFilter} 
+				  and featpointkey in (select featpointkey from SDA_Get_Featpointkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select  
+					P.areasymbol, P.spatialversion, P.SoilSpotFeatureKey as featkey,
+					P.AoiSoilSpotFeaturePointGeo as featpointgeo, 
+					P.featpointkey,
+					P.SoilSpotFeatureSymbol as featsym, P.markercharacter, D.featdesc, D.featname
+				from bafsdacache.dbo.AoiSoilSpotFeaturePoint P,  featdesc D 
+				where P.aoiid={AoiID}
+				and P.SoilSpotFeatureKey = D.featkey
+				{~? {useSpatialFilter} 
+				  and P.AoiSoilSpotFeaturePointGeo.STIntersects(geometry::STGeomFromText({spatialFilter}, 4326)) = 1
+				}
+			}
+			{~? {IsAoiSsaBased}
+				select 
+					P.areasymbol, P.spatialversion, P.featkey, P.featpointgeo, P.featpointkey, 
+					P.featsym, P.markercharacter, D.featdesc, D.featname
+				from featpoint P {~? {useSpatialFilter} WITH(INDEX(pk_featpoint))},  featdesc D, 
+					bafsdacache.dbo.AOI as AOI with(nolock)
+				where AOI.areasymbol = P.areasymbol 
+				and AOI.aoiid={AoiID}
+				and P.featkey = D.featkey
+				{~? {useSpatialFilter} 
+				  and featpointkey in (select featpointkey from SDA_Get_Featpointkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select  
+					P.areasymbol, P.spatialversion, P.featkey, P.featpointgeo, P.featpointkey, 
+					P.featsym, P.markercharacter, D.featdesc, D.featname
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+					sdm.dbo.mupolygon MUP,
+					featpoint P,  
+					featdesc D 				
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				and P.featkey = D.featkey 
+				and MUP.mupolygongeo.STIntersects(P.featpointgeo) = 1
+				{~? {useSpatialFilter}
+					and mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWgs84({spatialFilter}))
+				}
+			}	
+		) as subqry using unique featpointkey using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "featpointproj from (
+			{~? {IsNotAoi}
+				select
+					P.areasymbol, P.spatialversion, P.featkey, P.featpointproj, P.featpointkey, 
+					P.featsym, P.markercharacter, D.featdesc, D.featname
+				from featpoint P {~? {useSpatialFilter} WITH(INDEX(pk_featpoint))},  featdesc D 
+				where P.featkey = D.featkey 
+				{~? {useSpatialFilter} 
+				  and featpointkey in (select featpointkey from SDA_Get_Featpointkey_from_intersection_with_WktWm({spatialFilter}))
+				}
+			}
+			{~? {IsAoiAdHoc}
+				select  
+					P.areasymbol, P.spatialversion, P.SoilSpotFeatureKey as featkey,
+					P.AoiSoilSpotFeaturePointProj as featpointproj, 
+					P.featpointkey,
+					P.SoilSpotFeatureSymbol as featsym, P.markercharacter, D.featdesc, D.featname
+				from bafsdacache.dbo.AoiSoilSpotFeaturePoint P,  featdesc D 
+				where P.aoiid={AoiID}				
+				and P.SoilSpotFeatureKey = D.featkey
+				{~? {useSpatialFilter} 
+				  and P.AoiSoilSpotFeaturePointProj.STIntersects(geometry::STGeomFromText({spatialFilter}, 3857)) = 1
+				}				
+			}
+			{~? {IsAoiSsaBased}
+				select
+					P.areasymbol, P.spatialversion, P.featkey, P.featpointproj, P.featpointkey, 
+					P.featsym, P.markercharacter, D.featdesc, D.featname
+				from featpoint P {~? {useSpatialFilter} WITH(INDEX(pk_featpoint))},  featdesc D, 
+					bafsdacache.dbo.AOI as AOI with(nolock)
+				where AOI.areasymbol = P.areasymbol 
+				and AOI.aoiid={AoiID}
+				and P.featkey = D.featkey		 
+				{~? {useSpatialFilter} 
+				  and featpointkey in (select featpointkey from SDA_Get_Featpointkey_from_intersection_with_WktWm({spatialFilter}))
+				}
+			}
+			{~? {IsAoiMukeyListBased}
+				select  
+					P.areasymbol, P.spatialversion, P.featkey, P.featpointproj, P.featpointkey, 
+					P.featsym, P.markercharacter, D.featdesc, D.featname
+				from bafsdacache.dbo.AOIMAPUNIT as AOIM with(nolock),
+					sdm.dbo.mupolygon MUP,
+					featpoint P,  
+					featdesc D 				
+				where AOIM.MapUnitKey = MUP.mukey 
+				and AOIM.aoiid={AoiID}
+				and P.featkey = D.featkey 
+				and MUP.mupolygonproj.STIntersects(P.featpointproj) = 1
+				{~? {useSpatialFilter}
+					and mupolygonkey in (
+						select mupolygonkey from SDA_Get_Mupolygonkey_from_intersection_with_WktWM({spatialFilter}))
+				}
+			}
+		) as subqry using unique featpointkey using SRID={DataSourceProjectionStringSrid}"
+	}
+
+	PROCESSING 'CLOSE_CONNECTION=DEFER' # Enable connection pooling
+	DUMP TRUE   ##required  for WFS server
+	PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  LabelItem markercharacter
+  opacity 100
+  class # 'specific symbols'
+    # All characters except space (for 'none of the above')
+    # are shown with the NRCS SSURGO font.
+    expression ('[MarkerCharacter]' ne ' ')
+    style
+      width 0 # we do not actually draw a dot
+      color '#ffffff'
+    end # of style
+    label
+      Color '#FFFFFF'
+      Outlinecolor '#000000'
+      Outlinewidth 1
+      Font 'nrcs-ssurgo'
+      Position cc
+      type truetype
+      BUFFER 0
+      PRIORITY 6
+      size 8
+      FORCE    False
+      PARTIALS False
+    end  #end of label
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class 'specific symbols'
+  class # 'other points'
+    # All characters except space (for 'none of the above')
+    # are shown with the NRCS SSURGO font.
+    expression ('[MarkerCharacter]' eq ' ')
+    style
+      symbol 'triangle'
+      size 8
+      color '#FFFFFF'
+      outlinecolor '#000000'
+      outlinewidth 1
+    end # of style
+    #TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class 'other points'
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\featpoint_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\featpoint_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\featpoint_footer.html'
+
+END # Layer featpoint
+
+# aoi layer (no fill)
+LAYER  
+  NAME aoi
+  GROUP 'Soils'
+  TYPE POLYGON
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 25000000
+  STATUS ON
+  METADATA
+	'ows_title'             'AOI boundary'
+	'ows_abstract'          'Boundary of AOI'
+	'ows_keywordlist'       'Soils,SDA,WSS'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'AoiID'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPolygon'
+	'gml_multiPolygon_type' 'multipolygon'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END # metadata
+   
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "AoiGeo from (
+			{~? {IsNotAoi}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiGeo, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where aoiid = -1
+			}
+			{~? {IsAoiAdHoc}
+				select
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiGeo, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}
+			{~? {IsAoiSsaBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AOI.AreaSymbol, AreaAcres, 
+					MAP.sapolygongeo as AoiGeo, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.sastatusmap as MAP 
+				where  AoiID = {AoiID} and AOI.areasymbol = MAP.areasymbol
+			}
+			{~? {IsAoiMukeyListBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiGeo, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}	
+		) as subqry using unique AoiId using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "AoiProj from (
+			{~? {IsNotAoi}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiProj, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where aoiid = -1
+			}
+			{~? {IsAoiAdHoc}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiProj, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}
+			{~? {IsAoiSsaBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AOI.AreaSymbol, AreaAcres, 
+					MAP.sapolygonproj as AoiProj, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.sastatusmap as MAP 
+				where  AoiID = {AoiID} and AOI.areasymbol = MAP.areasymbol
+			}
+			{~? {IsAoiMukeyListBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiProj, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}
+		) as subqry using unique AoiID using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  opacity 100
+  
+  CLASS
+	STYLE
+		OUTLINECOLOR '#00cccc'
+		WIDTH 1
+	END
+	#TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\aoi_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\aoi_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\aoi_footer.html'
+
+END # Layer aoi
+
+# aoihatched layer (filled with crosshatch)
+LAYER  
+  NAME aoihatched
+  GROUP 'Soils'
+  TYPE POLYGON
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 25000000
+  STATUS ON
+  METADATA
+	'ows_title'             'Crosshatched AOI'
+	'ows_abstract'          'Boundary of AOI with crosshatch fill'
+	'ows_keywordlist'       'Soils,SDA,WSS'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'AoiID'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPolygon'
+	'gml_multiPolygon_type' 'multipolygon'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END # metadata
+   
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "AoiGeo from (
+			{~? {IsNotAoi}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiGeo, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where aoiid = -1
+			}
+			{~? {IsAoiAdHoc}
+				select
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiGeo, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}
+			{~? {IsAoiSsaBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AOI.AreaSymbol, AreaAcres, 
+					MAP.sapolygongeo as AoiGeo, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.sastatusmap as MAP 
+				where  AoiID = {AoiID} and AOI.areasymbol = MAP.areasymbol
+			}
+			{~? {IsAoiMukeyListBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiGeo, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}	
+		) as subqry using unique AoiId using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "AoiProj from (
+			{~? {IsNotAoi}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiProj, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where aoiid = -1
+			}
+			{~? {IsAoiAdHoc}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiProj, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}
+			{~? {IsAoiSsaBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AOI.AreaSymbol, AreaAcres, 
+					MAP.sapolygonproj as AoiProj, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.sastatusmap as MAP 
+				where  AoiID = {AoiID} and AOI.areasymbol = MAP.areasymbol
+			}
+			{~? {IsAoiMukeyListBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiProj, LastTouchedDateTime, 
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}
+		) as subqry using unique AoiID using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+
+  opacity 100
+  
+  CLASS
+	STYLE
+		OUTLINECOLOR '#00cccc'
+		WIDTH 1
+	END
+	STYLE
+		SYMBOL 'hatch'
+		COLOR '#00cccc'
+		ANGLE 45
+		WIDTH 1
+		SIZE 15
+	END
+	#TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\aoihatched_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\aoihatched_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\aoihatched_footer.html'
+
+END # Layer aoihatched
+
+# aoilabeled layer (labeled with partnames)
+LAYER  
+  NAME aoilabeled
+  GROUP 'Soils'
+  TYPE POLYGON
+  MINSCALEDENOM 0.01
+  MAXSCALEDENOM 25000000
+  STATUS ON
+  METADATA
+	'ows_title'             'Labeled AOI'
+	'ows_abstract'          'AOI with part names labeled'
+	'ows_keywordlist'       'Soils,SDA,WSS'
+	'ows_extent'            '{ows_extent}'
+	'ows_include_items'     'all'
+	'gml_include_items'     'all'
+	'gml_featureid'         'AoiID'
+	'ows_enable_request'    '*'
+	'ows_group_title'       'Soils'
+	'gml_geometries'        'multiPolygon'
+	'gml_multiPolygon_type' 'multipolygon'
+	'wfs_getfeature_formatlist' 'gml,gml2,gml3'
+  END # metadata
+   
+  CONNECTION 'driver={~$WebConfigSetting.SqlServerNativeOdbcDriverName};{~$ConnectionString.SdmConnectionString}'
+  CONNECTIONTYPE PLUGIN
+  PLUGIN '{~$WebConfigSetting.RootPath}\{~$WebConfigSetting.MapServerSqlServerPluginFilename}'
+
+	{~? {UseGeographicData}
+		UNITS DD
+		DATA "AoiGeo from (
+			{~? {IsNotAoi}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiGeo, LastTouchedDateTime, '' as AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where aoiid = -1
+			}
+			{~? {~& {IsAoiAdHoc} {IsAoiMultipart}  }
+				select
+					Aoi.AoiID, Aoi.CreationDateTime, Aoi.CreationMethod, Aoi.AreaSymbol, P.AoiPartAcreage as AreaAcres, 
+					P.AoiPartGeo as AoiGeo, AOI.LastTouchedDateTime, P.AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi AOI with(nolock)
+				left join bafsdacache.dbo.AoiPart P with(nolock) on AOI.aoiid = P.aoiid
+				where AOI.AoiID = {AoiID}
+			}
+			{~? {~& {IsAoiAdHoc} {~! {IsAoiMultipart} } }
+				select
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiGeo, LastTouchedDateTime, '' as AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}
+			{~? {IsAoiSsaBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AOI.AreaSymbol, AreaAcres, 
+					MAP.sapolygongeo as AoiGeo, LastTouchedDateTime, '' as AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.sastatusmap as MAP 
+				where  AoiID = {AoiID} and AOI.areasymbol = MAP.areasymbol
+			}
+			{~? {IsAoiMukeyListBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiGeo, LastTouchedDateTime,  '' as AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}	
+		) as subqry using unique AoiId using SRID={DataSourceProjectionStringSrid}"
+	}
+	{~? {UseProjectedData}
+		UNITS METERS
+		DATA "AoiProj from (
+			{~? {IsNotAoi}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiProj, LastTouchedDateTime,  '' as AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where aoiid = -1
+			}		
+			{~? {~& {IsAoiAdHoc} {IsAoiMultipart}  }
+				select
+					Aoi.AoiID, Aoi.CreationDateTime, Aoi.CreationMethod, Aoi.AreaSymbol, P.AoiPartAcreage as AreaAcres, 
+					P.AoiPartProj as AoiProj, AOI.LastTouchedDateTime, P.AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi AOI with(nolock)
+				left join bafsdacache.dbo.AoiPart P with(nolock) on AOI.aoiid = P.aoiid
+				where AOI.AoiID = {AoiID}
+			}
+			{~? {~& {IsAoiAdHoc} {~! {IsAoiMultipart} } }
+				select
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiProj, LastTouchedDateTime, '' as AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}
+			{~? {IsAoiSsaBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AOI.AreaSymbol, AreaAcres, 
+					MAP.sapolygonproj as AoiProj, LastTouchedDateTime,  '' as AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.AOI as AOI  with(nolock),
+				sdm.dbo.sastatusmap as MAP 
+				where  AoiID = {AoiID} and AOI.areasymbol = MAP.areasymbol
+			}
+			{~? {IsAoiMukeyListBased}
+				select 
+					AoiID, CreationDateTime, CreationMethod, AreaSymbol, AreaAcres, 
+					AoiProj, LastTouchedDateTime,  '' as AoiPartName,
+					IsAoiSsaBased, IsAoiAdHoc, IsAoiMukeyListBased, IsAoiMultipart
+				from bafsdacache.dbo.Aoi  with(nolock) where AoiID = {AoiID}
+			}
+		) as subqry using unique AoiID using SRID={DataSourceProjectionStringSrid}"
+	}
+
+  PROCESSING 'CLOSE_CONNECTION=DEFER'
+  DUMP TRUE
+  PROJECTION '{DataSourceProjectionStringEpsg}' END
+  LABELITEM 'AoiPartName' 
+  opacity 100
+  
+  CLASS
+	STYLE
+		OUTLINECOLOR '#00cccc'
+		WIDTH 1
+	END
+	LABEL
+		COLOR 0 0 51  # dark blue
+		Font 'arial-bold'
+		Position auto
+		type truetype
+		PRIORITY 10
+		size 10
+		style
+			geomtransform 'labelpoly'
+			color 153 255 102
+		end  #end of label style
+	end  #end of label
+
+	#TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\empty.html'
+  end  # of class
+
+  HEADER '{~$WebConfigSetting.RootPath}\Resources\aoilabeled_header.html'
+  TEMPLATE '{~$WebConfigSetting.RootPath}\Resources\aoilabeled_query.html'
+  FOOTER '{~$WebConfigSetting.RootPath}\Resources\aoilabeled_footer.html'
+
+END # Layer aoilabeled
+
+END #Map File

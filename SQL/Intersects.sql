@@ -37,11 +37,37 @@ SELECT [areasymbol]
 
 GO
 */
+/*
 SELECT TOP 1
 M.mukey
 , M.[mupolygonkey]
 , A.[r_factor]
 ,  M.mupolygongeo.STIntersection(A.geom ) AS soilgeom
-FROM [sdmONLINE].[dbo].[mupolygon] M, [sdm_spatial].[dbo].[r_factor] A
-    WHERE mupolygongeo.STIntersects(A.geom) = 1;
+FROM [sdm].[dbo].[mupolygon] M, [sdm_spatial].[dbo].[r_factor] A
+    WHERE mupolygongeo.STIntersects(A.geom) = 1 AND M.Mukey = 422596;
+
+	*/
+
+	
+	SELECT TOP -- TOP 1 mukey 
+	FROM [sdm].[dbo].[mupolygon] M
+	 WHERE areasymbol = 'WI025' --- 753536 good
+	 
+
+	/* SELECT m.mukey, a.r_factor
+	 FROM [sdm].[dbo].[mupolygon] M,[sdm_spatial].[dbo].[r_factor] A 
+	 WHERE  Mukey = 753536 AND mupolygongeo.STIntersects(A.geom) = 1
+	 */
+
+	 /*
+	 SELECT COUNT(*) AS ct 
+	 FROM [sdm_spatial].[dbo].[r_factor] A 
+
+	 SELECT *
+	 FROM [sdm_spatial].[dbo].[r_factor] A WHERE [co_fips] = 'WI025'
+	 */
+
+
+
+
 
