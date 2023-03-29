@@ -1,0 +1,81 @@
+-- Define the colors and legend for the custom interpretation
+
+
+
+~DeclareAdHocLegendTable(@legendTable)~
+
+Insert into @legendTable (
+
+               [sequence]
+
+               ,LegendText
+
+               ,RgbString)
+
+values
+
+               (0,'Not Rated','#ffffff')
+
+               ,(1,'Low','#ffffb2')
+
+               ,(2,'Moderately Low','#fecc5c')
+
+               ,(3,'Moderate','#fd8d3c')
+
+               ,(4,'Moderately High','#f03b20')
+
+               ,(5,'High','#bd0026')
+
+
+
+-- Perform the custom interpretation
+
+--  This relies upon both Soils data and externally-sourced data.
+
+--  In this case the external data was spatially-defined to enable
+
+--  correlation of "rainfall-factor" values with the soil spatial
+
+--  boundaries.
+
+
+
+~DeclareAdHocRatingTable(@ratingTable)~
+
+Insert into @ratingTable(MapUnitKey, MapUnitRatingNumeric, RgbString)
+
+SELECT mukey
+
+               ,class_water_sensitive
+
+               ,RgbString
+
+FROM (
+
+               SELECT AoiId
+
+                              ,AoiMapunitID
+
+                              ,MapUnitKey
+
+               FROM SDA_Get_AoiMapunit_By_AoiId(@pAoiId)
+
+               ) amu
+
+INNER JOIN water_sensitivity rf
+
+               ON amu.MapUnitKey = rf.mukey
+
+INNER JOIN @legendTable lt
+
+               ON rf.class_water_sensitive = lt.[sequence]
+
+
+
+-- Load the custom interpretation into Soil Data Access
+
+
+
+~LoadAdHocInterpretation(@pAoiId,@ratingTable,@legendTable,@interpresultid,@message)~
+
+Select @interpresultid [interpresultid]
